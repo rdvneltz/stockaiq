@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
+import jwt, { SignOptions } from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { AppError } from './errorHandler';
 
@@ -32,9 +32,11 @@ export const generateToken = (payload: JWTPayload): string => {
     throw new Error('JWT_SECRET is not defined');
   }
 
-  return jwt.sign(payload, secret, {
+  const options: SignOptions = {
     expiresIn: process.env.JWT_EXPIRES_IN || '7d',
-  });
+  };
+
+  return jwt.sign(payload, secret, options);
 };
 
 export const verifyToken = (token: string): JWTPayload => {
