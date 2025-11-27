@@ -32,8 +32,9 @@ export const generateToken = (payload: JWTPayload): string => {
     throw new Error('JWT_SECRET is not defined');
   }
 
+  const expiresIn = (process.env.JWT_EXPIRES_IN || '7d') as string;
   const options: SignOptions = {
-    expiresIn: process.env.JWT_EXPIRES_IN || '7d',
+    expiresIn,
   };
 
   return jwt.sign(payload, secret, options);
