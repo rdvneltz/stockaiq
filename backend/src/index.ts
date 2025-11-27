@@ -112,7 +112,6 @@ const startServer = async () => {
   try {
     // Connect to databases
     await connectDB();
-    await redisClient.connect();
     logger.info('Connected to MongoDB and Redis');
 
     // Initialize services
