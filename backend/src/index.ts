@@ -79,28 +79,11 @@ app.use('/api/portfolio', portfolioRoutes);
 app.use('/api/signals', signalRoutes);
 app.use('/api/sentiment', sentimentRoutes);
 
-// Serve frontend in production using Next.js standalone server
-if (process.env.NODE_ENV === 'production') {
-  try {
-    const frontendServerPath = path.join(__dirname, '../../frontend/.next/standalone/server.js');
-
-    // Check if server.js exists
-    if (!fs.existsSync(frontendServerPath)) {
-      logger.error(`Frontend server.js not found at: ${frontendServerPath}`);
-    } else {
-      const nextApp = require(frontendServerPath);
-
-      // Handle all non-API routes with Next.js
-      app.get('*', (req, res) => {
-        return nextApp(req, res);
-      });
-
-      logger.info('Frontend Next.js server integrated');
-    }
-  } catch (error) {
-    logger.error('Failed to load frontend server:', error);
-  }
-}
+// Root endpoint - redirect to frontend
+app.get('/', (req, res) => {
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+  res.redirect(frontendUrl);
+});
 
 // Error handler (must be last)
 app.use(errorHandler);
