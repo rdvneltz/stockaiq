@@ -1,15 +1,21 @@
-import OneSignal from 'react-onesignal';
-
+// OneSignal will be initialized via script tag in production
 export const initOneSignal = async () => {
   try {
     const appId = process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID;
 
-    if (!appId) {
-      console.warn('OneSignal App ID not configured');
+    if (!appId || typeof window === 'undefined') {
+      console.warn('OneSignal App ID not configured or running on server');
       return;
     }
 
-    await OneSignal.init({
+    // Wait for OneSignal to load
+    if (!(window as any).OneSignal) {
+      console.warn('OneSignal SDK not loaded yet');
+      return;
+    }
+
+    // Initialize OneSignal
+    await (window as any).OneSignal.init({
       appId,
       allowLocalhostAsSecureOrigin: process.env.NODE_ENV === 'development',
     });
@@ -22,7 +28,9 @@ export const initOneSignal = async () => {
 
 export const subscribeToNotifications = async () => {
   try {
-    await OneSignal.showSlidedownPrompt();
+    if (typeof window !== 'undefined' && (window as any).OneSignal) {
+      await (window as any).OneSignal.Slidedown.promptPush();
+    }
   } catch (error) {
     console.error('Failed to show notification prompt:', error);
   }
@@ -30,21 +38,26 @@ export const subscribeToNotifications = async () => {
 
 export const setUserTags = async (userId: string, preferences: any) => {
   try {
-    await OneSignal.sendTags({
-      user_id: userId,
-      trading_signals: preferences.tradingSignals ? 'true' : 'false',
-      price_alerts: preferences.priceAlerts ? 'true' : 'false',
-      news: preferences.news ? 'true' : 'false',
-    });
-    console.log('User tags set successfully');
+    if (typeof window !== 'undefined' && (window as any).OneSignal) {
+      await (window as any).OneSignal.User.addTags({
+        user_id: userId,
+        trading_signals: preferences.tradingSignals ? 'true' : 'false',
+        price_alerts: preferences.priceAlerts ? 'true' : 'false',
+        news: preferences.news ? 'true' : 'false',
+      });
+      console.log('User tags set successfully');
+    }
   } catch (error) {
     console.error('Failed to set user tags:', error);
   }
 };
 
-export const getNotificationPermission = async (): Promise<boolean> => {
+export const getNotificationPermission = (): boolean => {
   try {
-    return await OneSignal.isPushNotificationsEnabled();
+    if (typeof window !== 'undefined' && (window as any).OneSignal) {
+      return (window as any).OneSignal.Notifications.permission;
+    }
+    return false;
   } catch (error) {
     console.error('Failed to get notification permission:', error);
     return false;

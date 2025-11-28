@@ -16,9 +16,11 @@ export default function Providers({ children }: { children: React.ReactNode }) {
   }))
 
   useEffect(() => {
-    // Initialize OneSignal on client-side
+    // Initialize OneSignal on client-side after script loads
     if (typeof window !== 'undefined') {
-      initOneSignal();
+      setTimeout(() => {
+        initOneSignal();
+      }, 2000);
     }
   }, []);
 
