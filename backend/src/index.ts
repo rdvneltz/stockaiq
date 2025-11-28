@@ -69,7 +69,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Routes
+// API Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/stocks', stockRoutes);
 app.use('/api/strategies', strategyRoutes);
@@ -78,23 +78,24 @@ app.use('/api/portfolio', portfolioRoutes);
 app.use('/api/signals', signalRoutes);
 app.use('/api/sentiment', sentimentRoutes);
 
-// Serve frontend static files in production
+// Serve frontend in production using Next.js standalone server
 if (process.env.NODE_ENV === 'production') {
-  const frontendBuildPath = path.join(__dirname, '../../frontend/out');
+  try {
+    const frontendServerPath = path.join(__dirname, '../../frontend/.next/standalone/frontend/server.js');
+    const nextApp = require(frontendServerPath);
 
-  // Serve static files
-  app.use(express.static(frontendBuildPath));
+    // Handle all non-API routes with Next.js
+    app.get('*', (req, res) => {
+      return nextApp(req, res);
+    });
 
-  // Handle client-side routing - serve index.html for all non-API routes
-  app.get('*', (req, res, next) => {
-    if (req.path.startsWith('/api/') || req.path.startsWith('/health')) {
-      return next();
-    }
-    res.sendFile(path.join(frontendBuildPath, 'index.html'));
-  });
+    logger.info('Frontend Next.js server integrated');
+  } catch (error) {
+    logger.error('Failed to load frontend server:', error);
+  }
 }
 
-// Error handler
+// Error handler (must be last)
 app.use(errorHandler);
 
 // Initialize services

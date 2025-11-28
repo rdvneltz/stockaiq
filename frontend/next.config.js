@@ -2,14 +2,13 @@
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
-  output: 'export',
-  distDir: 'out',
+  output: 'standalone',
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000',
     NEXT_PUBLIC_WS_URL: process.env.NEXT_PUBLIC_WS_URL || 'ws://localhost:5001',
   },
   images: {
-    unoptimized: true, // Required for static export
+    domains: ['localhost'],
   },
 }
 
