@@ -8,7 +8,7 @@
     "build": "npm run build:frontend && npm run build:backend && npm run postbuild",
     "build:frontend": "cd frontend && npm run build",
     "build:backend": "cd backend && npm run build",
-    "postbuild": "cp -r frontend/.next/static frontend/.next/standalone/frontend/.next/ && cp -r frontend/public frontend/.next/standalone/frontend/",
+    "postbuild": "mkdir -p frontend/.next/standalone/frontend/.next && cp -r frontend/.next/static frontend/.next/standalone/frontend/.next/ && cp -r frontend/public frontend/.next/standalone/frontend/",
     "start": "cd backend && npm start",
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:backend": "cd backend && npm run dev",
