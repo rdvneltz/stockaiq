@@ -7,6 +7,7 @@ import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import connectDB from './config/database';
 import redisClient from './config/redis';
 import logger from './utils/logger';
@@ -81,15 +82,21 @@ app.use('/api/sentiment', sentimentRoutes);
 // Serve frontend in production using Next.js standalone server
 if (process.env.NODE_ENV === 'production') {
   try {
-    const frontendServerPath = path.join(__dirname, '../../frontend/.next/standalone/frontend/server.js');
-    const nextApp = require(frontendServerPath);
+    const frontendServerPath = path.join(__dirname, '../../frontend/.next/standalone/server.js');
 
-    // Handle all non-API routes with Next.js
-    app.get('*', (req, res) => {
-      return nextApp(req, res);
-    });
+    // Check if server.js exists
+    if (!fs.existsSync(frontendServerPath)) {
+      logger.error(`Frontend server.js not found at: ${frontendServerPath}`);
+    } else {
+      const nextApp = require(frontendServerPath);
 
-    logger.info('Frontend Next.js server integrated');
+      // Handle all non-API routes with Next.js
+      app.get('*', (req, res) => {
+        return nextApp(req, res);
+      });
+
+      logger.info('Frontend Next.js server integrated');
+    }
   } catch (error) {
     logger.error('Failed to load frontend server:', error);
   }
