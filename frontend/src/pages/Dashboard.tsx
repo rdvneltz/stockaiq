@@ -44,7 +44,7 @@ const Dashboard: React.FC = () => {
 
     setAddingStock(true);
     try {
-      const stockData = await stockApi.getStock(newSymbol.toUpperCase());
+      await stockApi.getStock(newSymbol.toUpperCase());
       setWatchlist([...watchlist, newSymbol.toUpperCase()]);
       setNewSymbol('');
     } catch (error) {
