@@ -1,183 +1,107 @@
 import express from 'express';
 import cors from 'cors';
-import helmet from 'helmet';
-import compression from 'compression';
-import rateLimit from 'express-rate-limit';
-import { createServer } from 'http';
-import { Server as SocketIOServer } from 'socket.io';
 import dotenv from 'dotenv';
+import stockRoutes from './routes/stock.routes';
+import healthRoutes from './routes/health.routes';
+import { errorHandler, notFoundHandler } from './middleware/errorHandler';
+import { apiLimiter } from './middleware/rateLimiter';
+import healthCheckService from './services/healthCheck.service';
+import logger from './utils/logger';
 import path from 'path';
 import fs from 'fs';
-import connectDB from './config/database';
-import redisClient from './config/redis';
-import logger from './utils/logger';
-import errorHandler from './utils/errorHandler';
 
-// Routes
-import authRoutes from './routes/auth';
-import stockRoutes from './routes/stocks';
-import strategyRoutes from './routes/strategies';
-import watchlistRoutes from './routes/watchlist';
-import portfolioRoutes from './routes/portfolio';
-import signalRoutes from './routes/signals';
-import sentimentRoutes from './routes/sentiment';
-
-// Services
-import PriceUpdateService from './services/data-collector/priceUpdate';
-import DataCollectorService from './services/data-collector';
-import TechnicalAnalysisService from './services/technical-analysis';
-import SentimentAnalysisService from './services/sentiment';
-import StrategyEngineService from './services/strategy-engine';
-import NotificationService from './services/notifications';
-
+// .env dosyasını yükle
 dotenv.config();
 
 const app = express();
-const httpServer = createServer(app);
-const io = new SocketIOServer(httpServer, {
-  cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-    methods: ['GET', 'POST'],
-  },
-});
-
 const PORT = process.env.PORT || 5000;
-const WS_PORT = process.env.WS_PORT || 5001;
+
+// Logs klasörünü oluştur
+const logsDir = path.join(__dirname, '../logs');
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir, { recursive: true });
+}
 
 // Middleware
-app.use(helmet());
-app.use(compression());
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-  credentials: true,
+  origin: process.env.NODE_ENV === 'production'
+    ? ['https://stockaiq.vercel.app', 'https://stockaiq-*.vercel.app']
+    : ['http://localhost:3000', 'http://localhost:5173'],
+  credentials: true
 }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Rate limiting
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // limit each IP to 100 requests per windowMs
-});
-app.use('/api/', limiter);
-
-// Health check
-app.get('/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    timestamp: new Date(),
-    uptime: process.uptime(),
-  });
-});
+app.use('/api', apiLimiter);
 
 // API Routes
-app.use('/api/auth', authRoutes);
 app.use('/api/stocks', stockRoutes);
-app.use('/api/strategies', strategyRoutes);
-app.use('/api/watchlist', watchlistRoutes);
-app.use('/api/portfolio', portfolioRoutes);
-app.use('/api/signals', signalRoutes);
-app.use('/api/sentiment', sentimentRoutes);
+app.use('/api/health', healthRoutes);
 
-// Root endpoint - redirect to frontend
+// Root endpoint
 app.get('/', (req, res) => {
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-  res.redirect(frontendUrl);
+  res.json({
+    name: 'StockAIQ API',
+    version: '1.0.0',
+    description: 'BIST Hisse Analiz Sistemi - Backend API',
+    endpoints: {
+      stocks: '/api/stocks/:symbol',
+      multipleStocks: '/api/stocks/multiple',
+      health: '/api/health',
+      healthCheck: '/api/health/check',
+      healthReport: '/api/health/report',
+    },
+    status: 'operational',
+  });
 });
 
-// Error handler (must be last)
+// 404 handler
+app.use(notFoundHandler);
+
+// Error handler (en sonda olmalı)
 app.use(errorHandler);
 
-// Initialize services
-let priceUpdateService: PriceUpdateService;
-let dataCollectorService: DataCollectorService;
-let technicalAnalysisService: TechnicalAnalysisService;
-let sentimentAnalysisService: SentimentAnalysisService;
-let strategyEngineService: StrategyEngineService;
-let notificationService: NotificationService;
+// Sunucuyu başlat
+app.listen(PORT, async () => {
+  logger.info(`🚀 StockAIQ Backend started on port ${PORT}`);
+  logger.info(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+  logger.info(`🔗 API URL: http://localhost:${PORT}`);
 
-// Socket.IO connection
-io.on('connection', (socket) => {
-  logger.info(`Client connected: ${socket.id}`);
-
-  socket.on('subscribe', (symbols: string[]) => {
-    logger.info(`Client ${socket.id} subscribed to: ${symbols.join(', ')}`);
-    socket.join(symbols);
-  });
-
-  socket.on('unsubscribe', (symbols: string[]) => {
-    logger.info(`Client ${socket.id} unsubscribed from: ${symbols.join(', ')}`);
-    symbols.forEach(symbol => socket.leave(symbol));
-  });
-
-  socket.on('disconnect', () => {
-    logger.info(`Client disconnected: ${socket.id}`);
-  });
-});
-
-// Start server
-const startServer = async () => {
+  // Başlangıçta sistem sağlık kontrolü yap
+  logger.info('🏥 Running initial health check...');
   try {
-    // Connect to databases
-    await connectDB();
-    logger.info('Connected to MongoDB and Redis');
+    const health = await healthCheckService.checkAllSources();
+    logger.info(`✅ Health check completed: ${health.overall}`);
 
-    // Initialize services
-    notificationService = new NotificationService(io);
-    priceUpdateService = new PriceUpdateService(io, redisClient);
-    dataCollectorService = new DataCollectorService(redisClient);
-    technicalAnalysisService = new TechnicalAnalysisService();
-    sentimentAnalysisService = new SentimentAnalysisService(notificationService);
-    strategyEngineService = new StrategyEngineService(notificationService);
-
-    // Start services
-    await priceUpdateService.start();
-    await dataCollectorService.start();
-    await sentimentAnalysisService.start();
-    await strategyEngineService.start();
-
-    logger.info('All services started successfully');
-
-    // Start HTTP server
-    httpServer.listen(PORT, () => {
-      logger.info(`🚀 Server running on port ${PORT}`);
-      logger.info(`🔌 WebSocket server running on port ${PORT}`);
-      logger.info(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-    });
+    // Sorun varsa uyarı ver
+    if (health.overall !== 'healthy') {
+      logger.warn('⚠️  UYARI: Bazı veri kaynakları çalışmıyor!');
+      logger.warn(healthCheckService.getHealthReport());
+    }
   } catch (error) {
-    logger.error('Failed to start server:', error);
-    process.exit(1);
+    logger.error('❌ Initial health check failed:', error);
   }
-};
+
+  // Periyodik sağlık kontrolünü başlat
+  healthCheckService.startPeriodicCheck();
+  logger.info('🔄 Periodic health check started (every 5 minutes)');
+});
 
 // Graceful shutdown
-process.on('SIGTERM', async () => {
+process.on('SIGTERM', () => {
   logger.info('SIGTERM signal received: closing HTTP server');
-  httpServer.close(async () => {
-    await redisClient.quit();
-    process.exit(0);
-  });
+  process.exit(0);
 });
 
-process.on('SIGINT', async () => {
+process.on('SIGINT', () => {
   logger.info('SIGINT signal received: closing HTTP server');
-  httpServer.close(async () => {
-    await redisClient.quit();
-    process.exit(0);
-  });
+  process.exit(0);
 });
 
-// Handle uncaught exceptions
-process.on('uncaughtException', (error) => {
-  logger.error('Uncaught Exception:', error);
-  process.exit(1);
-});
-
+// Unhandled rejection handler
 process.on('unhandledRejection', (reason, promise) => {
   logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
-  process.exit(1);
 });
 
-startServer();
-
-export { io };
+export default app;

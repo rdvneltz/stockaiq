@@ -1,55 +1,33 @@
 {
   "name": "stockaiq-backend",
   "version": "1.0.0",
-  "description": "StockAIQ Backend - Real-time Stock Analysis & Trading Signals",
+  "description": "BIST Hisse Analiz Sistemi - Backend",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "nodemon --exec ts-node src/index.ts",
+    "dev": "nodemon src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
-    "test": "jest",
-    "lint": "eslint src --ext .ts"
+    "test": "jest"
   },
-  "keywords": ["stock", "trading", "analysis", "bist"],
-  "author": "",
-  "license": "MIT",
   "dependencies": {
     "express": "^4.18.2",
     "cors": "^2.8.5",
     "dotenv": "^16.3.1",
-    "mongoose": "^8.0.3",
-    "ws": "^8.16.0",
     "axios": "^1.6.2",
     "cheerio": "^1.0.0-rc.12",
-    "node-cron": "^3.0.3",
-    "ioredis": "^5.3.2",
-    "socket.io": "^4.6.1",
-    "bcryptjs": "^2.4.3",
-    "jsonwebtoken": "^9.0.2",
-    "telegraf": "^4.15.0",
-    "rss-parser": "^3.13.0",
-    "natural": "^6.10.2",
-    "technicalindicators": "^3.1.0",
-    "yahoo-finance2": "^2.9.0",
-    "helmet": "^7.1.0",
-    "express-rate-limit": "^7.1.5",
-    "compression": "^1.7.4",
-    "winston": "^3.11.0"
+    "yahoo-finance2": "^2.11.0",
+    "node-cache": "^5.1.2",
+    "winston": "^3.11.0",
+    "express-rate-limit": "^7.1.5"
   },
   "devDependencies": {
     "@types/express": "^4.17.21",
     "@types/cors": "^2.8.17",
-    "@types/node": "^20.10.5",
-    "@types/bcryptjs": "^2.4.6",
-    "@types/jsonwebtoken": "^9.0.5",
-    "@types/compression": "^1.7.5",
-    "@types/ws": "^8.5.10",
-    "@types/node-cron": "^3.0.11",
+    "@types/node": "^20.10.4",
     "typescript": "^5.3.3",
-    "ts-node": "^10.9.2",
     "nodemon": "^3.0.2",
-    "eslint": "^8.56.0",
-    "@typescript-eslint/eslint-plugin": "^6.15.0",
-    "@typescript-eslint/parser": "^6.15.0"
+    "ts-node": "^10.9.2",
+    "@types/jest": "^29.5.11",
+    "jest": "^29.7.0"
   }
 }

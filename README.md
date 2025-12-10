@@ -1,239 +1,179 @@
-# StockAIQ - Borsa İstanbul Al-Sat Platformu
+# 📊 StockAIQ - BIST Hisse Analiz Sistemi
 
-**Profesyonel Real-time Hisse Analizi ve Trading Sinyalleri**
+Borsa İstanbul (BIST) hisselerinin detaylı analizini yapmanızı sağlayan profesyonel bir web uygulaması.
 
 ## ✨ Özellikler
 
-### 📊 Real-time Veri
-- **1-3 saniye** fiyat güncellemeleri (WebSocket)
-- Anlık hacim ve fiyat değişimleri
-- Live trading sinyalleri
+### 🎯 Tek Ekran Detaylı Analiz
+- Hisse seçimi ile **tek tıkla** kapsamlı bilanço ve piyasa analizi
+- 50+ veri noktası tek ekranda
+- Gerçek zamanlı fiyat ve hacim verileri
+- Finansal tablo detayları (hasılat, karlılık, borç yapısı)
 
-### 🎯 Al-Sat Sinyalleri
-- Fundamental + Technical + Sentiment hibrit analiz
-- 3 farklı hedef fiyat yöntemi (Sektör, Fibonacci, Destek-Direnç)
-- Özelleştirilebilir sinyal kriterleri
-- Risk/Ödül oranı hesaplama
+### 📈 Veri Noktaları
+- **Fiyat Verileri**: Anlık, günlük, 7 gün, 30 gün, 52 hafta yüksek/düşük
+- **İşlem Verileri**: Alış/satış, hacim, lot büyüklüğü
+- **Temel Göstergeler**: F/K, PD/DD, FD/FAVO, PD/EBITDA, piyasa değeri
+- **Finansal Tablo**: Hasılat, brüt kar, net kar, karlılık, öz sermaye, varlıklar, borçlar
+- **Detaylı Bilanço**: Ticari alacaklar, finansal yatırımlar, banka kredileri, vb.
+- **AI Değerlendirme**: Otomatik değerleme, karlılık, borç analizi
 
-### 📰 Sentiment Analizi (1 dakika interval)
-- KAP bildirimleri
-- Twitter/X feeds
-- Bloomberg HT & Ekonomi siteleri RSS
-- Türkçe NLP analizi
-- Önem seviyesi filtreleme
+### 🏥 Self-Monitoring Sistem
+- Veri kaynaklarının otomatik sağlık kontrolü
+- Sorun durumunda anlık kullanıcı uyarısı
+- 5 dakikalık periyodik kontrol
+- Kaynak bazında hata raporlama
 
-### 🔍 Gelişmiş Screener
-- P/B, F/K, ROE, Borç/Özkaynak filtreleme
-- Özel kriterlere göre tarama
-- AND/OR mantıksal bağlantılar
-- Kayıtlı strateji şablonları
+### 🔄 Çoklu Veri Kaynağı
+- **Yahoo Finance**: Fiyat ve temel finansal veriler
+- **KAP (Kamu Aydınlatma Platformu)**: Resmi bilanço verileri
+- **Investing.com**: Güncel piyasa verileri
+- Otomatik veri birleştirme ve önceliklendirme
 
-### 📈 Teknik Analiz
-- RSI, MACD, Bollinger Bands
-- SMA 50/100/200
-- Destek-Direnç seviyeleri
-- Hacim analizi
-
-### 💼 Portföy Takibi
-- Watchlist (20+ hisse)
-- Portfolio tracking
-- Performans analizi
-
-### 🔔 Bildirimler
-- Push notifications (OneSignal)
-- Telegram bot
-- Sesli uyarılar
-- Email bildirimleri
-
-## 🛠️ Tech Stack
-
-### Backend
-- Node.js + Express + TypeScript
-- MongoDB (Mongoose)
-- Redis (Caching)
-- Socket.IO (WebSocket)
-- Node-cron (Scheduler)
-
-### Frontend
-- Next.js 14 (App Router)
-- React 18 + TypeScript
-- TailwindCSS + Shadcn/UI
-- React Query
-- Lightweight Charts
-
-### Services
-- **PriceUpdateService**: Real-time fiyat güncellemeleri
-- **DataCollectorService**: KAP finansal veri toplama
-- **TechnicalAnalysisService**: Teknik indikatör hesaplama
-- **SentimentAnalysisService**: Haber ve sentiment analizi
-- **StrategyEngineService**: Al-sat sinyal üretimi
-- **NotificationService**: Multi-channel bildirimler
+### ⚙️ Ücretli API Desteği
+- Gelecekte kullanılmak üzere API entegrasyonu altyapısı
+- Finnet, Matriks, BIST API hazır
+- Ayarlar sayfasından kolay aktivasyon
 
 ## 🚀 Kurulum
 
-### 1. Prerequisites
-```bash
-Node.js 18+
-MongoDB
-Redis
-```
+### Gereksinimler
+- Node.js 18+
+- npm veya yarn
 
-### 2. Backend Setup
+### Backend Kurulumu
+
 ```bash
 cd backend
 npm install
-cp .env.example .env
-# .env dosyasını düzenle
 npm run dev
 ```
 
-### 3. Frontend Setup
+Backend http://localhost:5000 adresinde çalışacaktır.
+
+### Frontend Kurulumu
+
 ```bash
 cd frontend
 npm install
-cp .env.local.example .env.local
 npm run dev
 ```
 
-### 4. Docker (Opsiyonel)
-```bash
-docker-compose up -d
-```
+Frontend http://localhost:3000 adresinde çalışacaktır.
 
-## 📁 Proje Yapısı
+## 📖 Kullanım
 
-```
-StockAIQ/
-├── backend/
-│   ├── src/
-│   │   ├── controllers/       # API controllers
-│   │   ├── models/            # MongoDB models
-│   │   ├── routes/            # Express routes
-│   │   ├── services/          # Business logic
-│   │   │   ├── data-collector/
-│   │   │   ├── technical-analysis/
-│   │   │   ├── sentiment/
-│   │   │   ├── strategy-engine/
-│   │   │   └── notifications/
-│   │   ├── utils/             # Helper functions
-│   │   └── index.ts           # Entry point
-├── frontend/
-│   ├── src/
-│   │   ├── app/              # Next.js App Router pages
-│   │   ├── components/       # React components
-│   │   └── lib/              # Utils, API, WebSocket
-└── shared/
-    └── types/                # Shared TypeScript types
-```
+1. **Hisse Arama**: Ana sayfada hisse sembolünü girin (örn: THYAO, GARAN, AKBNK)
+2. **Analiz Görüntüleme**: "Analiz Et" butonuna tıklayın
+3. **Veri İnceleme**: Tek ekranda tüm verileri görüntüleyin
+4. **Sistem Durumu**: Ayarlar sayfasından veri kaynaklarını kontrol edin
 
-## 🔑 Environment Variables
+## 🛠️ Teknoloji Stack
+
+### Backend
+- **Node.js** + **Express** + **TypeScript**
+- **Yahoo Finance API** - Fiyat ve finansal veriler
+- **Axios** + **Cheerio** - Web scraping (KAP, Investing.com)
+- **Winston** - Loglama
+- **Node-Cache** - Veri önbellekleme
+- **Express Rate Limit** - API koruma
+
+### Frontend
+- **React 18** + **TypeScript**
+- **Vite** - Hızlı geliştirme
+- **React Router** - Sayfa yönlendirme
+- **Axios** - API iletişimi
+- **Lucide Icons** - İkonlar
+
+## 🔧 Konfigürasyon
 
 ### Backend (.env)
 ```env
 PORT=5000
-MONGODB_URI=mongodb+srv://...
-REDIS_URL=redis://...
-JWT_SECRET=...
-TWITTER_BEARER_TOKEN=...
-TELEGRAM_BOT_TOKEN=...
-ONESIGNAL_APP_ID=...
-ONESIGNAL_API_KEY=...
+NODE_ENV=development
+CACHE_TTL=15                    # Dakika
+RATE_LIMIT_WINDOW_MS=60000      # 1 dakika
+RATE_LIMIT_MAX_REQUESTS=100
+
+# Ücretli API Anahtarları (opsiyonel)
+# FINNET_API_KEY=
+# MATRIKS_API_KEY=
+# BIST_API_KEY=
 ```
 
-### Frontend (.env.local)
+### Frontend (.env)
 ```env
-NEXT_PUBLIC_API_URL=http://localhost:5000
-NEXT_PUBLIC_WS_URL=ws://localhost:5001
+VITE_API_URL=http://localhost:5000/api
 ```
 
-## 🔄 Data Sources
+## 🏗️ Mimari
 
-| Kaynak | Veri Türü | Güncelleme | Maliyet |
-|--------|-----------|------------|---------|
-| Yahoo Finance | Fiyat | Real-time | ✅ Ücretsiz |
-| KAP API | Finansal tablolar | 6 saat | ✅ Ücretsiz |
-| Twitter API | Sentiment | Real-time | ✅ Free tier |
-| Bloomberg HT RSS | Haberler | 30 saniye | ✅ Ücretsiz |
-
-## 📊 Veri Akışı
-
-1. **PriceUpdateService** → Yahoo Finance/IS Investment → MongoDB + Redis → WebSocket → Frontend
-2. **DataCollectorService** → KAP API → Finansal hesaplama → MongoDB
-3. **TechnicalAnalysisService** → Price History → Indicator calculation → MongoDB
-4. **SentimentAnalysisService** → KAP/Twitter/RSS → NLP Analysis → MongoDB → Notifications
-5. **StrategyEngineService** → All Data → Signal Generation → MongoDB → Notifications
-
-## 🎯 API Endpoints
-
-### Authentication
-- `POST /api/auth/register` - Kullanıcı kaydı
-- `POST /api/auth/login` - Giriş yap
-- `GET /api/auth/profile` - Profil bilgisi
-
-### Stocks
-- `GET /api/stocks` - Tüm hisseler
-- `GET /api/stocks/:symbol` - Hisse detayı
-- `POST /api/stocks/screen` - Filtreleme
-
-### Signals
-- `GET /api/signals` - Tüm sinyaller
-- `GET /api/signals/:symbol` - Hisse sinyali
-
-### Watchlist
-- `GET /api/watchlist` - Takip listesi
-- `POST /api/watchlist` - Hisse ekle
-- `DELETE /api/watchlist/:symbol` - Hisse çıkar
-
-### Portfolio
-- `GET /api/portfolio` - Portföy
-- `POST /api/portfolio` - Pozisyon ekle
-- `DELETE /api/portfolio/:symbol` - Pozisyon çıkar
-
-## 🚀 Deployment
-
-### Frontend (Vercel)
-```bash
-cd frontend
-vercel --prod
+```
+Frontend (React/Vite)
+    ↓
+Backend API (Express)
+    ↓
+┌─────────────────────────────┐
+│   Data Aggregator Service   │
+│  (Veri Birleştirme Katmanı) │
+└─────────────────────────────┘
+    ↓           ↓           ↓
+Yahoo Finance  KAP  Investing.com
+    ↓
+Cache (15 dakika TTL)
+    ↓
+Health Check (5 dakika periyodik)
 ```
 
-### Backend (Railway/Render)
-```bash
-# Railway
-railway up
+## 📊 API Endpoints
 
-# Render
-# Dashboard'dan deploy
-```
+### Hisse Verileri
+- `GET /api/stocks/:symbol` - Tek hisse verisi
+- `POST /api/stocks/multiple` - Çoklu hisse verisi
+- `DELETE /api/stocks/:symbol/cache` - Cache temizle
 
-### Environment Variables
-Backend ve Frontend için gerekli environment variable'ları deployment platformunda ayarla.
+### Sistem Sağlığı
+- `GET /api/health` - Sistem durumu
+- `GET /api/health/check` - Yeni sağlık kontrolü
+- `GET /api/health/report` - Detaylı rapor
+- `GET /api/health/stats` - Sistem istatistikleri
 
-## 📝 Todo / Roadmap
+## ⚠️ Önemli Notlar
 
-- [ ] Advanced chart drawing tools
-- [ ] Custom strategy builder UI
-- [ ] Backtesting engine
-- [ ] Machine learning price prediction
-- [ ] Mobile app (React Native)
-- [ ] Portfolio optimization
-- [ ] Alert rule builder
-- [ ] Sector analysis dashboard
-- [ ] Peer comparison tool
-- [ ] Export reports (PDF/Excel)
+### Web Scraping
+- Sistem KAP ve Investing.com'dan web scraping ile veri çeker
+- Site yapısı değişirse scraper'lar güncellenmelidir
+- Health check sistemi sorunları otomatik tespit eder
 
-## 🤝 Contributing
+### Rate Limiting
+- API varsayılan: 100 istek/dakika
+- Aşırı yüklenmeyi önler
+- Gerekirse .env'den ayarlanabilir
 
-Bu proje private kullanım için geliştirilmiştir.
+### Cache
+- Veriler 15 dakika önbelleklenir
+- Manuel temizleme mümkün
+- Gereksiz API çağrılarını azaltır
 
-## 📄 License
+## 🔮 Gelecek Özellikler
 
-MIT
+- [ ] Çoklu hisse karşılaştırma
+- [ ] Grafik ve görselleştirme (Recharts)
+- [ ] PDF/Excel export
+- [ ] Watchlist (favori hisseler)
+- [ ] E-posta bildirimleri
+- [ ] Tarihsel veri grafikleri
+- [ ] Sektör analizi
+- [ ] OpenAI entegrasyonu (GPT analiz)
 
-## 👤 Developer
+## 📝 Lisans
 
-[@rdvneltz](https://github.com/rdvneltz)
+Bu proje özel kullanım içindir.
+
+## 🤝 Katkıda Bulunma
+
+Sorun bildirimi ve öneriler için GitHub Issues kullanabilirsiniz.
 
 ---
 
-**⚠️ Disclaimer**: Bu platform sadece bilgilendirme amaçlıdır. Yatırım tavsiyesi değildir. Yatırım kararlarınızdan siz sorumlusunuz.
+**Not**: Bu sistem ücretsiz veri kaynaklarını kullanır. Gerçek zamanlı ve tam doğruluk için ücretli API'ler gerekebilir.
