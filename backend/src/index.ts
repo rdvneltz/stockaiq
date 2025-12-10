@@ -67,46 +67,55 @@ app.use(notFoundHandler);
 // Error handler (en sonda olmalı)
 app.use(errorHandler);
 
-// Sunucuyu başlat
-app.listen(PORT, async () => {
-  logger.info(`🚀 StockAIQ Backend started on port ${PORT}`);
-  logger.info(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
-  logger.info(`🔗 API URL: http://localhost:${PORT}`);
+// Initialize health check for serverless
+if (process.env.NODE_ENV === 'production') {
+  // Serverless ortamda periyodik check yapma, sadece ilk init
+  healthCheckService.checkAllSources().catch(err =>
+    logger.error('Initial health check failed:', err)
+  );
+} else {
+  // Local development için sunucuyu başlat
+  app.listen(PORT, async () => {
+    logger.info(`🚀 StockAIQ Backend started on port ${PORT}`);
+    logger.info(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+    logger.info(`🔗 API URL: http://localhost:${PORT}`);
 
-  // Başlangıçta sistem sağlık kontrolü yap
-  logger.info('🏥 Running initial health check...');
-  try {
-    const health = await healthCheckService.checkAllSources();
-    logger.info(`✅ Health check completed: ${health.overall}`);
+    // Başlangıçta sistem sağlık kontrolü yap
+    logger.info('🏥 Running initial health check...');
+    try {
+      const health = await healthCheckService.checkAllSources();
+      logger.info(`✅ Health check completed: ${health.overall}`);
 
-    // Sorun varsa uyarı ver
-    if (health.overall !== 'healthy') {
-      logger.warn('⚠️  UYARI: Bazı veri kaynakları çalışmıyor!');
-      logger.warn(healthCheckService.getHealthReport());
+      // Sorun varsa uyarı ver
+      if (health.overall !== 'healthy') {
+        logger.warn('⚠️  UYARI: Bazı veri kaynakları çalışmıyor!');
+        logger.warn(healthCheckService.getHealthReport());
+      }
+    } catch (error) {
+      logger.error('❌ Initial health check failed:', error);
     }
-  } catch (error) {
-    logger.error('❌ Initial health check failed:', error);
-  }
 
-  // Periyodik sağlık kontrolünü başlat
-  healthCheckService.startPeriodicCheck();
-  logger.info('🔄 Periodic health check started (every 5 minutes)');
-});
+    // Periyodik sağlık kontrolünü başlat
+    healthCheckService.startPeriodicCheck();
+    logger.info('🔄 Periodic health check started (every 5 minutes)');
+  });
 
-// Graceful shutdown
-process.on('SIGTERM', () => {
-  logger.info('SIGTERM signal received: closing HTTP server');
-  process.exit(0);
-});
+  // Graceful shutdown
+  process.on('SIGTERM', () => {
+    logger.info('SIGTERM signal received: closing HTTP server');
+    process.exit(0);
+  });
 
-process.on('SIGINT', () => {
-  logger.info('SIGINT signal received: closing HTTP server');
-  process.exit(0);
-});
+  process.on('SIGINT', () => {
+    logger.info('SIGINT signal received: closing HTTP server');
+    process.exit(0);
+  });
 
-// Unhandled rejection handler
-process.on('unhandledRejection', (reason, promise) => {
-  logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
-});
+  // Unhandled rejection handler
+  process.on('unhandledRejection', (reason, promise) => {
+    logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  });
+}
 
+// Export for Vercel serverless
 export default app;
