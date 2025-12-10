@@ -157,7 +157,7 @@ const Settings: React.FC = () => {
         </div>
       </div>
 
-      <style jsx>{`
+      <style>{`
         .settings-page {
           min-height: 100vh;
           padding: 20px;

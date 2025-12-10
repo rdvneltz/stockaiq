@@ -244,7 +244,7 @@ const StockAnalysis: React.FC = () => {
         </div>
       )}
 
-      <style jsx>{`
+      <style>{`
         .stock-analysis {
           min-height: 100vh;
           padding: 20px;
@@ -439,7 +439,7 @@ const DataRow: React.FC<{ label: string; value: string; color?: string }> = ({
     <span className="value" style={{ color }}>
       {value}
     </span>
-    <style jsx>{`
+    <style>{`
       .data-row {
         display: flex;
         justify-content: space-between;
@@ -465,7 +465,7 @@ const SummaryItem: React.FC<{ label: string; value: string }> = ({ label, value 
   <div className="summary-item">
     <div className="summary-label">{label}</div>
     <div className="summary-value">{value}</div>
-    <style jsx>{`
+    <style>{`
       .summary-item {
         background: rgba(255, 255, 255, 0.03);
         padding: 16px;

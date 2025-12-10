@@ -19,7 +19,7 @@ const App: React.FC = () => {
         </main>
       </div>
 
-      <style jsx global>{`
+      <style>{`
         * {
           margin: 0;
           padding: 0;
@@ -90,7 +90,7 @@ const Navbar: React.FC = () => {
         </div>
       </div>
 
-      <style jsx>{`
+      <style>{`
         .navbar {
           background: rgba(255, 255, 255, 0.05);
           border-bottom: 1px solid rgba(255, 255, 255, 0.1);
