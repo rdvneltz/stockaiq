@@ -53,10 +53,10 @@ router.post('/multiple', async (req: Request, res: Response) => {
       });
     }
 
-    if (symbols.length > 10) {
+    if (symbols.length > 50) {
       return res.status(400).json({
         success: false,
-        error: 'En fazla 10 hisse sorgulanabilir',
+        error: 'En fazla 50 hisse sorgulanabilir',
       });
     }
 
