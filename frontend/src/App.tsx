@@ -1,7 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { TrendingUp, Settings as SettingsIcon } from 'lucide-react';
-import StockAnalysis from './pages/StockAnalysis';
+import Dashboard from './pages/Dashboard';
 import Settings from './pages/Settings';
 import HealthAlert from './components/HealthAlert';
 
@@ -13,7 +13,7 @@ const App: React.FC = () => {
         <Navbar />
         <main className="main-content">
           <Routes>
-            <Route path="/" element={<StockAnalysis />} />
+            <Route path="/" element={<Dashboard />} />
             <Route path="/settings" element={<Settings />} />
           </Routes>
         </main>
@@ -78,7 +78,7 @@ const Navbar: React.FC = () => {
             className={`nav-link ${location.pathname === '/' ? 'active' : ''}`}
           >
             <TrendingUp size={18} />
-            Analiz
+            Piyasa
           </Link>
           <Link
             to="/settings"
