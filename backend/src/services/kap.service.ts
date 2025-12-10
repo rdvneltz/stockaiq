@@ -42,7 +42,7 @@ class KAPService {
   private async findCompanyUrl(symbol: string): Promise<string | null> {
     try {
       const response = await axios.get(this.SEARCH_URL, {
-        timeout: 10000,
+        timeout: 3000,
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         },
@@ -80,7 +80,7 @@ class KAPService {
   private async scrapeFinancialData(url: string): Promise<Partial<StockData>> {
     try {
       const response = await axios.get(url, {
-        timeout: 10000,
+        timeout: 3000,
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         },
@@ -202,7 +202,7 @@ class KAPService {
     const startTime = Date.now();
     try {
       await axios.get(this.BASE_URL, {
-        timeout: 10000,
+        timeout: 3000,
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         },

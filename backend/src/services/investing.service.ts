@@ -67,7 +67,7 @@ class InvestingService {
   private async scrapeStockPage(url: string, symbol: string): Promise<Partial<StockData>> {
     try {
       const response = await axios.get(url, {
-        timeout: 10000,
+        timeout: 3000,
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
           'Accept-Language': 'tr-TR,tr;q=0.9',
@@ -287,7 +287,7 @@ class InvestingService {
     const startTime = Date.now();
     try {
       await axios.get(this.BASE_URL, {
-        timeout: 10000,
+        timeout: 3000,
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         },
