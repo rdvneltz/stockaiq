@@ -28,7 +28,8 @@ app.use(cors({
     ? [
         'https://stockaiq.vercel.app',
         'https://stockaiq-frontend.vercel.app',
-        'https://stockaiq-*.vercel.app'
+        'https://stockaiq-front.vercel.app',
+        /^https:\/\/stockaiq.*\.vercel\.app$/
       ]
     : ['http://localhost:3000', 'http://localhost:5173'],
   credentials: true
