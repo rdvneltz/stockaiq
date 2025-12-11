@@ -132,14 +132,17 @@ router.delete('/cache/all', (req: Request, res: Response) => {
 /**
  * GET /api/stocks/:symbol/historical
  * Belirli bir hisse için gerçek historical price data (candlestick) getirir
- * Query params: period (1d, 5d, 1mo, 3mo, 6mo, 1y) - default: 3mo
+ * Query params:
+ *   - period (1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y) - default: 6mo
+ *   - interval (1d, 1wk, 1mo) - default: 1d
+ * Not: Intraday (saatlik) data desteklenmiyor
  */
 router.get('/:symbol/historical', async (req: Request, res: Response) => {
   const { symbol } = req.params;
-  const { period = '3mo' } = req.query;
+  const { period = '6mo', interval = '1d' } = req.query;
 
   try {
-    logger.info(`API request for historical data: ${symbol} (${period})`);
+    logger.info(`API request for historical data: ${symbol} (period: ${period}, interval: ${interval})`);
 
     if (!symbol || symbol.length < 2) {
       return res.status(400).json({
@@ -148,17 +151,26 @@ router.get('/:symbol/historical', async (req: Request, res: Response) => {
       });
     }
 
-    const validPeriods = ['1d', '5d', '1mo', '3mo', '6mo', '1y'];
+    const validPeriods = ['1d', '5d', '1mo', '3mo', '6mo', '1y', '2y', '5y', '10y'];
     if (!validPeriods.includes(period as string)) {
       return res.status(400).json({
         success: false,
-        error: 'Geçerli bir period giriniz (1d, 5d, 1mo, 3mo, 6mo, 1y)',
+        error: 'Geçerli bir period giriniz (1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y)',
+      });
+    }
+
+    const validIntervals = ['1d', '1wk', '1mo'];
+    if (!validIntervals.includes(interval as string)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Geçerli bir interval giriniz (1d, 1wk, 1mo)',
       });
     }
 
     const data = await yahooFinanceService.getHistoricalData(
       symbol,
-      period as '1d' | '5d' | '1mo' | '3mo' | '6mo' | '1y'
+      period as '1d' | '5d' | '1mo' | '3mo' | '6mo' | '1y' | '2y' | '5y' | '10y',
+      interval as '1d' | '1wk' | '1mo'
     );
 
     res.json({
@@ -166,6 +178,7 @@ router.get('/:symbol/historical', async (req: Request, res: Response) => {
       data,
       count: data.length,
       period,
+      interval,
       symbol: symbol.toUpperCase(),
     });
 

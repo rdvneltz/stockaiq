@@ -172,17 +172,26 @@ class YahooFinanceService {
 
   /**
    * Yahoo Finance'den historical price data çeker (candlestick için)
+   * Not: Yahoo Finance intraday (saatlik) data desteklemiyor, sadece günlük ve üzeri
    */
-  async getHistoricalData(symbol: string, period: '1d' | '5d' | '1mo' | '3mo' | '6mo' | '1y' = '3mo'): Promise<any[]> {
+  async getHistoricalData(
+    symbol: string,
+    period: '1d' | '5d' | '1mo' | '3mo' | '6mo' | '1y' | '2y' | '5y' | '10y' = '3mo',
+    interval: '1d' | '1wk' | '1mo' = '1d'
+  ): Promise<any[]> {
     const yahooSymbol = this.formatSymbol(symbol);
-    logger.info(`Fetching historical data from Yahoo Finance: ${yahooSymbol} (${period})`);
+    logger.info(`Fetching historical data from Yahoo Finance: ${yahooSymbol} (period: ${period}, interval: ${interval})`);
 
     try {
-      const queryOptions = { period1: this.getPeriodStartDate(period), period2: new Date() };
+      const queryOptions = {
+        period1: this.getPeriodStartDate(period),
+        period2: new Date(),
+        interval: interval as '1d' | '1wk' | '1mo'
+      };
       const result = await yahooFinance.historical(yahooSymbol, queryOptions);
 
       // Yahoo Finance formatını lightweight-charts formatına dönüştür
-      const chartData = result.map(candle => ({
+      const chartData = result.map((candle: any) => ({
         time: Math.floor(candle.date.getTime() / 1000), // Unix timestamp in seconds
         open: candle.open,
         high: candle.high,
@@ -224,6 +233,15 @@ class YahooFinanceService {
         break;
       case '1y':
         startDate.setFullYear(now.getFullYear() - 1);
+        break;
+      case '2y':
+        startDate.setFullYear(now.getFullYear() - 2);
+        break;
+      case '5y':
+        startDate.setFullYear(now.getFullYear() - 5);
+        break;
+      case '10y':
+        startDate.setFullYear(now.getFullYear() - 10);
         break;
       default:
         startDate.setMonth(now.getMonth() - 3);

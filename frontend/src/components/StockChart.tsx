@@ -23,7 +23,8 @@ const StockChart: React.FC<StockChartProps> = ({
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const [showBollinger, setShowBollinger] = useState(true);
   const [showFibonacci, setShowFibonacci] = useState(true);
-  const [period, setPeriod] = useState<'1mo' | '3mo' | '6mo' | '1y'>('3mo');
+  const [interval, setInterval] = useState<'1d' | '1wk' | '1mo'>('1d');
+  const [period, setPeriod] = useState<'5d' | '1mo' | '6mo' | '2y' | '5y'>('6mo');
   const [loading, setLoading] = useState(true);
   const [historicalData, setHistoricalData] = useState<CandlestickData[]>([]);
   const bollingerSeriesRef = useRef<{
@@ -37,7 +38,7 @@ const StockChart: React.FC<StockChartProps> = ({
     setLoading(true);
     try {
       const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
-      const response = await fetch(`${API_BASE_URL}/stocks/${symbol}/historical?period=${period}`);
+      const response = await fetch(`${API_BASE_URL}/stocks/${symbol}/historical?period=${period}&interval=${interval}`);
 
       if (!response.ok) {
         throw new Error('Historical data fetch failed');
@@ -61,7 +62,7 @@ const StockChart: React.FC<StockChartProps> = ({
 
   useEffect(() => {
     fetchHistoricalData();
-  }, [symbol, period]);
+  }, [symbol, interval, period]);
 
   // Calculate Bollinger Bands
   const calculateBollingerBands = (data: CandlestickData[], period: number = 20, stdDev: number = 2) => {
@@ -222,30 +223,41 @@ const StockChart: React.FC<StockChartProps> = ({
             <span>Fibonacci Retracement</span>
           </label>
         </div>
-        <div className="period-selector">
+        <div className="interval-selector">
           <button
-            className={period === '1mo' ? 'active' : ''}
-            onClick={() => setPeriod('1mo')}
+            className={interval === '1d' && period === '5d' ? 'active' : ''}
+            onClick={() => { setInterval('1d'); setPeriod('5d'); }}
+            title="Günlük mumlar (5 gün)"
           >
-            1 Ay
+            5G
           </button>
           <button
-            className={period === '3mo' ? 'active' : ''}
-            onClick={() => setPeriod('3mo')}
+            className={interval === '1d' && period === '1mo' ? 'active' : ''}
+            onClick={() => { setInterval('1d'); setPeriod('1mo'); }}
+            title="Günlük mumlar (1 ay)"
           >
-            3 Ay
+            1A
           </button>
           <button
-            className={period === '6mo' ? 'active' : ''}
-            onClick={() => setPeriod('6mo')}
+            className={interval === '1d' && period === '6mo' ? 'active' : ''}
+            onClick={() => { setInterval('1d'); setPeriod('6mo'); }}
+            title="Günlük mumlar (6 ay)"
           >
-            6 Ay
+            6A
           </button>
           <button
-            className={period === '1y' ? 'active' : ''}
-            onClick={() => setPeriod('1y')}
+            className={interval === '1wk' && period === '2y' ? 'active' : ''}
+            onClick={() => { setInterval('1wk'); setPeriod('2y'); }}
+            title="Haftalık mumlar (2 yıl)"
           >
-            1 Yıl
+            2Y
+          </button>
+          <button
+            className={interval === '1mo' && period === '5y' ? 'active' : ''}
+            onClick={() => { setInterval('1mo'); setPeriod('5y'); }}
+            title="Aylık mumlar (5 yıl)"
+          >
+            5Y
           </button>
         </div>
       </div>
@@ -296,7 +308,7 @@ const StockChart: React.FC<StockChartProps> = ({
           gap: 20px;
         }
 
-        .period-selector {
+        .interval-selector {
           display: flex;
           gap: 8px;
           background: rgba(0, 0, 0, 0.2);
@@ -304,7 +316,7 @@ const StockChart: React.FC<StockChartProps> = ({
           border-radius: 6px;
         }
 
-        .period-selector button {
+        .interval-selector button {
           padding: 6px 14px;
           background: transparent;
           border: none;
@@ -316,12 +328,12 @@ const StockChart: React.FC<StockChartProps> = ({
           transition: all 0.2s;
         }
 
-        .period-selector button:hover {
+        .interval-selector button:hover {
           color: rgba(255, 255, 255, 0.9);
           background: rgba(255, 255, 255, 0.05);
         }
 
-        .period-selector button.active {
+        .interval-selector button.active {
           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
           color: #fff;
         }
