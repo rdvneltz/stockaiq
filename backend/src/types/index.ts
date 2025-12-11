@@ -101,6 +101,20 @@ export interface StockData {
     profitability: number;
   }[];
 
+  // Akıllı Analiz ve Öneriler
+  smartAnalysis: {
+    overallScore: number; // 0-100 arası genel skor
+    rating: 'Strong Buy' | 'Buy' | 'Hold' | 'Sell' | 'Strong Sell'; // Genel öneri
+    valuationScore: number; // Değerleme skoru (0-100)
+    profitabilityScore: number; // Karlılık skoru (0-100)
+    liquidityScore: number; // Likidite skoru (0-100)
+    leverageScore: number; // Borçluluk skoru (0-100)
+    strengths: string[]; // Güçlü yönler
+    weaknesses: string[]; // Zayıf yönler
+    warnings: string[]; // Uyarılar
+    recommendations: string[]; // Öneriler
+  };
+
   lastUpdated: Date;
 }
 

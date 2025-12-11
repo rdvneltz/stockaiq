@@ -93,6 +93,19 @@ export interface StockData {
     profitability: number;
   }[];
 
+  smartAnalysis: {
+    overallScore: number;
+    rating: 'Strong Buy' | 'Buy' | 'Hold' | 'Sell' | 'Strong Sell';
+    valuationScore: number;
+    profitabilityScore: number;
+    liquidityScore: number;
+    leverageScore: number;
+    strengths: string[];
+    weaknesses: string[];
+    warnings: string[];
+    recommendations: string[];
+  };
+
   lastUpdated: Date;
 }
 

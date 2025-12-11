@@ -22,8 +22,8 @@ const Dashboard: React.FC = () => {
 
   useEffect(() => {
     loadStocks();
-    // Her 60 saniyede bir güncelle
-    const interval = setInterval(loadStocks, 60000);
+    // Her 10 saniyede bir güncelle (anlık fiyatlar için)
+    const interval = setInterval(loadStocks, 10000);
     return () => clearInterval(interval);
   }, [watchlist]);
 
@@ -467,6 +467,14 @@ interface StockDetailModalProps {
 const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, onClose }) => {
   const [activeTab, setActiveTab] = React.useState<'overview' | 'balance' | 'profitability' | 'valuation' | 'technical'>('overview');
 
+  // Modal açıldığında body scroll'ü kapat
+  React.useEffect(() => {
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = 'unset';
+    };
+  }, []);
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -664,7 +672,7 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, onClose }) =
                 <h3>💎 Sermaye Yapısı</h3>
                 <div className="detail-grid">
                   <DetailRow label="Ödenmiş Sermaye" value={stock.fundamentals.paidCapital ? `${(stock.fundamentals.paidCapital / 1_000_000).toFixed(1)}M ₺` : '-'} />
-                  <DetailRow label="İhraç Edilen Hisse" value={stock.fundamentals.shares?.toLocaleString('tr-TR') || '-'} />
+                  <DetailRow label="İhraç Edilen Hisse" value={stock.fundamentals.shares ? `${(stock.fundamentals.shares / 1_000_000_000).toFixed(2)}B adet` : '-'} />
                   <DetailRow label="Öz Sermaye" value={stock.financials.equity ? `${(stock.financials.equity / 1_000_000).toFixed(1)}M ₺` : '-'} />
                   <DetailRow label="Hisse Başı Değer" value={stock.fundamentals.shares && stock.financials.equity ? `${(stock.financials.equity / stock.fundamentals.shares).toFixed(2)} ₺` : '-'} />
                 </div>
