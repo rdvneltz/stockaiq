@@ -402,22 +402,21 @@ const StockCard: React.FC<StockCardProps> = ({ stock, isFavorite, onToggleFavori
 
   return (
     <div className="stock-card" onClick={onClick}>
-      <div className="card-top-bar">
-        <div className="last-updated" title={stock.lastUpdated ? new Date(stock.lastUpdated).toLocaleString('tr-TR') : '-'}>
-          <Clock size={12} />
-          <span>{formatTimeAgo(stock.lastUpdated)}</span>
-        </div>
-        <button
-          className={`favorite-btn ${isFavorite ? 'active' : ''}`}
-          onClick={(e) => {
-            e.stopPropagation();
-            onToggleFavorite(stock.symbol);
-          }}
-          title={isFavorite ? 'Favorilerden çıkar' : 'Favorilere ekle'}
-        >
-          <Star size={18} fill={isFavorite ? '#fbbf24' : 'none'} stroke={isFavorite ? '#fbbf24' : '#fff'} />
-        </button>
+      <div className="last-updated" title={stock.lastUpdated ? new Date(stock.lastUpdated).toLocaleString('tr-TR') : '-'}>
+        <Clock size={12} />
+        <span>{formatTimeAgo(stock.lastUpdated)}</span>
       </div>
+
+      <button
+        className={`favorite-btn ${isFavorite ? 'active' : ''}`}
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleFavorite(stock.symbol);
+        }}
+        title={isFavorite ? 'Favorilerden çıkar' : 'Favorilere ekle'}
+      >
+        <Star size={18} fill={isFavorite ? '#fbbf24' : 'none'} stroke={isFavorite ? '#fbbf24' : '#fff'} />
+      </button>
 
       <div className="rating-badge" style={getRatingBadgeStyle(stock.smartAnalysis.rating)}>
         {stock.smartAnalysis.rating}
@@ -534,27 +533,21 @@ const StockCard: React.FC<StockCardProps> = ({ stock, isFavorite, onToggleFavori
           box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
         }
 
-        .card-top-bar {
+        .last-updated {
           position: absolute;
           top: 8px;
-          left: 8px;
-          right: 8px;
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          z-index: 10;
-        }
-
-        .last-updated {
+          left: 50%;
+          transform: translateX(-50%);
           display: flex;
           align-items: center;
           gap: 4px;
           font-size: 10px;
           color: rgba(255, 255, 255, 0.5);
-          background: rgba(0, 0, 0, 0.3);
+          background: rgba(0, 0, 0, 0.4);
           padding: 4px 8px;
           border-radius: 12px;
           backdrop-filter: blur(4px);
+          z-index: 10;
         }
 
         .last-updated span {
@@ -562,6 +555,9 @@ const StockCard: React.FC<StockCardProps> = ({ stock, isFavorite, onToggleFavori
         }
 
         .favorite-btn {
+          position: absolute;
+          top: 8px;
+          right: 8px;
           background: rgba(0, 0, 0, 0.3);
           border: none;
           width: 32px;
