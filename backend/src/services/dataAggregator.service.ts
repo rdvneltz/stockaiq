@@ -1,6 +1,9 @@
 import yahooFinanceService from './yahooFinance.service';
 import kapService from './kap.service';
 import investingService from './investing.service';
+import twelveDataService from './twelveData.service';
+import finnhubService from './finnhub.service';
+import fmpService from './fmp.service';
 import cache from '../utils/cache';
 import logger from '../utils/logger';
 import { StockData } from '../types';
@@ -22,17 +25,23 @@ class DataAggregatorService {
     logger.info(`Aggregating data from all sources for ${symbol}`);
 
     try {
-      // Tüm kaynaklardan paralel veri çek
-      const [yahooData, kapData, investingData] = await Promise.allSettled([
+      // Multi-source fallback: Tüm kaynaklardan paralel veri çek
+      const [yahooData, twelveData, finnhubData, fmpData, kapData, investingData] = await Promise.allSettled([
         yahooFinanceService.getStockData(symbol),
+        twelveDataService.getStockData(symbol),
+        finnhubService.getStockData(symbol),
+        fmpService.getFinancialStatements(symbol),
         kapService.getFinancialData(symbol),
         investingService.getStockData(symbol),
       ]);
 
-      // Veri birleştir - öncelik sırası: Investing > Yahoo > KAP
+      // Veri birleştir - öncelik sırası: Twelve Data > Finnhub > FMP > Yahoo > Investing > KAP
       const aggregatedData = this.mergeData(
         symbol,
         this.getResultValue(yahooData),
+        this.getResultValue(twelveData),
+        this.getResultValue(finnhubData),
+        this.getResultValue(fmpData),
         this.getResultValue(kapData),
         this.getResultValue(investingData)
       );
@@ -68,21 +77,24 @@ class DataAggregatorService {
   }
 
   /**
-   * Farklı kaynaklardan gelen verileri birleştirir
+   * Farklı kaynaklardan gelen verileri birleştirir (Fallback Chain)
    */
   private mergeData(
     symbol: string,
     yahoo: Partial<StockData>,
+    twelve: Partial<StockData>,
+    finnhub: Partial<StockData>,
+    fmp: Partial<StockData>,
     kap: Partial<StockData>,
     investing: Partial<StockData>
   ): StockData {
     return {
       symbol: symbol.toUpperCase(),
-      companyName: investing.companyName || yahoo.companyName || symbol,
-      currentPrice: investing.priceData?.currentPrice || yahoo.currentPrice || null,
+      companyName: twelve.companyName || finnhub.companyName || yahoo.companyName || investing.companyName || symbol,
+      currentPrice: twelve.currentPrice || finnhub.currentPrice || yahoo.currentPrice || investing.priceData?.currentPrice || null,
 
       priceData: {
-        currentPrice: investing.priceData?.currentPrice || yahoo.priceData?.currentPrice || null,
+        currentPrice: twelve.priceData?.currentPrice || finnhub.priceData?.currentPrice || yahoo.priceData?.currentPrice || investing.priceData?.currentPrice || null,
         dayHigh: investing.priceData?.dayHigh || yahoo.priceData?.dayHigh || null,
         dayLow: investing.priceData?.dayLow || yahoo.priceData?.dayLow || null,
         dayAverage: investing.priceData?.dayAverage || yahoo.priceData?.dayAverage || null,
@@ -108,23 +120,23 @@ class DataAggregatorService {
       },
 
       fundamentals: {
-        marketCap: yahoo.fundamentals?.marketCap || investing.fundamentals?.marketCap || null,
-        pdDD: yahoo.fundamentals?.pdDD || investing.fundamentals?.pdDD || null,
-        fk: yahoo.fundamentals?.fk || investing.fundamentals?.fk || null,
+        marketCap: twelve.fundamentals?.marketCap || finnhub.fundamentals?.marketCap || fmp.fundamentals?.marketCap || yahoo.fundamentals?.marketCap || investing.fundamentals?.marketCap || null,
+        pdDD: twelve.fundamentals?.pdDD || finnhub.fundamentals?.pdDD || fmp.fundamentals?.pdDD || yahoo.fundamentals?.pdDD || investing.fundamentals?.pdDD || null,
+        fk: twelve.fundamentals?.fk || finnhub.fundamentals?.fk || fmp.fundamentals?.fk || yahoo.fundamentals?.fk || investing.fundamentals?.fk || null,
         fdFAVO: yahoo.fundamentals?.fdFAVO || null,
         pdEBITDA: yahoo.fundamentals?.pdEBITDA || null,
-        shares: yahoo.fundamentals?.shares || kap.fundamentals?.shares || null,
-        paidCapital: kap.fundamentals?.paidCapital || null,
-        eps: null, // Hesaplanacak
-        roe: null, // Hesaplanacak
-        roa: null, // Hesaplanacak
+        shares: twelve.fundamentals?.shares || finnhub.fundamentals?.shares || fmp.fundamentals?.shares || yahoo.fundamentals?.shares || kap.fundamentals?.shares || null,
+        paidCapital: fmp.fundamentals?.paidCapital || kap.fundamentals?.paidCapital || null,
+        eps: twelve.fundamentals?.eps || finnhub.fundamentals?.eps || fmp.fundamentals?.eps || null,
+        roe: finnhub.fundamentals?.roe || fmp.fundamentals?.roe || null,
+        roa: finnhub.fundamentals?.roa || fmp.fundamentals?.roa || null,
       },
 
       financials: {
-        period: kap.financials?.period || yahoo.financials?.period || null,
-        revenue: kap.financials?.revenue || yahoo.financials?.revenue || null,
-        grossProfit: kap.financials?.grossProfit || yahoo.financials?.grossProfit || null,
-        netIncome: kap.financials?.netIncome || yahoo.financials?.netIncome || null,
+        period: fmp.financials?.period || kap.financials?.period || yahoo.financials?.period || null,
+        revenue: fmp.financials?.revenue || kap.financials?.revenue || yahoo.financials?.revenue || null,
+        grossProfit: fmp.financials?.grossProfit || kap.financials?.grossProfit || yahoo.financials?.grossProfit || null,
+        netIncome: fmp.financials?.netIncome || kap.financials?.netIncome || yahoo.financials?.netIncome || null,
         profitability: kap.financials?.profitability || yahoo.financials?.profitability || null,
         grossProfitMargin: null, // Hesaplanacak
         equity: kap.financials?.equity || yahoo.financials?.equity || null,
