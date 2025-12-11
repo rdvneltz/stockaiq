@@ -23,7 +23,7 @@ const StockChart: React.FC<StockChartProps> = ({
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const [showBollinger, setShowBollinger] = useState(true);
   const [showFibonacci, setShowFibonacci] = useState(true);
-  const [interval, setInterval] = useState<'1d' | '1wk' | '1mo'>('1d');
+  const [interval, setInterval] = useState<'1h' | '4h' | '1d' | '1wk' | '1mo'>('1d');
   const [period, setPeriod] = useState<'5d' | '1mo' | '6mo' | '2y' | '5y'>('6mo');
   const [loading, setLoading] = useState(true);
   const [historicalData, setHistoricalData] = useState<CandlestickData[]>([]);
@@ -224,6 +224,20 @@ const StockChart: React.FC<StockChartProps> = ({
           </label>
         </div>
         <div className="interval-selector">
+          <button
+            className={interval === '1h' ? 'active' : ''}
+            onClick={() => { setInterval('1h'); setPeriod('5d'); }}
+            title="1 Saatlik mumlar (5 gün)"
+          >
+            1S
+          </button>
+          <button
+            className={interval === '4h' ? 'active' : ''}
+            onClick={() => { setInterval('4h'); setPeriod('1mo'); }}
+            title="4 Saatlik mumlar (1 ay)"
+          >
+            4S
+          </button>
           <button
             className={interval === '1d' && period === '5d' ? 'active' : ''}
             onClick={() => { setInterval('1d'); setPeriod('5d'); }}
