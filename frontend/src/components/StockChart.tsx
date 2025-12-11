@@ -23,57 +23,45 @@ const StockChart: React.FC<StockChartProps> = ({
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
   const [showBollinger, setShowBollinger] = useState(true);
   const [showFibonacci, setShowFibonacci] = useState(true);
+  const [period, setPeriod] = useState<'1mo' | '3mo' | '6mo' | '1y'>('3mo');
+  const [loading, setLoading] = useState(true);
+  const [historicalData, setHistoricalData] = useState<CandlestickData[]>([]);
   const bollingerSeriesRef = useRef<{
     upper: ISeriesApi<'Line'> | null;
     middle: ISeriesApi<'Line'> | null;
     lower: ISeriesApi<'Line'> | null;
   }>({ upper: null, middle: null, lower: null });
 
-  // Generate simulated historical data (in a real app, this would come from an API)
-  const generateHistoricalData = (): CandlestickData[] => {
-    const data: CandlestickData[] = [];
-    const days = 90; // 3 months
-    const now = new Date();
+  // Fetch real historical data from backend
+  const fetchHistoricalData = async () => {
+    setLoading(true);
+    try {
+      const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5001/api';
+      const response = await fetch(`${API_BASE_URL}/stocks/${symbol}/historical?period=${period}`);
 
-    let basePrice = currentPrice * 0.85; // Start 15% lower
-    const volatility = currentPrice * 0.02; // 2% daily volatility
+      if (!response.ok) {
+        throw new Error('Historical data fetch failed');
+      }
 
-    for (let i = days; i >= 0; i--) {
-      const date = new Date(now);
-      date.setDate(date.getDate() - i);
+      const result = await response.json();
 
-      // Skip weekends
-      if (date.getDay() === 0 || date.getDay() === 6) continue;
-
-      const change = (Math.random() - 0.5) * volatility;
-      basePrice = Math.max(basePrice + change, currentPrice * 0.5);
-
-      const open = basePrice;
-      const close = basePrice + (Math.random() - 0.5) * volatility * 0.5;
-      const high = Math.max(open, close) + Math.random() * volatility * 0.3;
-      const low = Math.min(open, close) - Math.random() * volatility * 0.3;
-
-      data.push({
-        time: date.getTime() / 1000 as any,
-        open,
-        high,
-        low,
-        close
-      });
-
-      basePrice = close;
+      if (result.success && result.data) {
+        setHistoricalData(result.data);
+      } else {
+        throw new Error(result.error || 'No data returned');
+      }
+    } catch (error) {
+      console.error('Error fetching historical data:', error);
+      // Fallback to empty data on error
+      setHistoricalData([]);
+    } finally {
+      setLoading(false);
     }
-
-    // Ensure last price matches current price
-    if (data.length > 0) {
-      const lastCandle = data[data.length - 1];
-      lastCandle.close = currentPrice;
-      lastCandle.high = Math.max(lastCandle.high, currentPrice);
-      lastCandle.low = Math.min(lastCandle.low, currentPrice);
-    }
-
-    return data;
   };
+
+  useEffect(() => {
+    fetchHistoricalData();
+  }, [symbol, period]);
 
   // Calculate Bollinger Bands
   const calculateBollingerBands = (data: CandlestickData[], period: number = 20, stdDev: number = 2) => {
@@ -115,7 +103,7 @@ const StockChart: React.FC<StockChartProps> = ({
   };
 
   useEffect(() => {
-    if (!chartContainerRef.current) return;
+    if (!chartContainerRef.current || historicalData.length === 0) return;
 
     const chart = createChart(chartContainerRef.current, {
       width: chartContainerRef.current.clientWidth,
@@ -148,7 +136,7 @@ const StockChart: React.FC<StockChartProps> = ({
       wickDownColor: '#ef4444',
     });
 
-    const historicalData = generateHistoricalData();
+    // Use real historical data from API
     candlestickSeries.setData(historicalData);
     candlestickSeriesRef.current = candlestickSeries;
 
@@ -211,29 +199,61 @@ const StockChart: React.FC<StockChartProps> = ({
       window.removeEventListener('resize', handleResize);
       chart.remove();
     };
-  }, [symbol, currentPrice, showBollinger, showFibonacci, week52High, week52Low]);
+  }, [historicalData, showBollinger, showFibonacci, week52High, week52Low]);
 
   return (
     <div className="stock-chart-container">
       <div className="chart-controls">
-        <label className="control-label">
-          <input
-            type="checkbox"
-            checked={showBollinger}
-            onChange={(e) => setShowBollinger(e.target.checked)}
-          />
-          <span>Bollinger Bands</span>
-        </label>
-        <label className="control-label">
-          <input
-            type="checkbox"
-            checked={showFibonacci}
-            onChange={(e) => setShowFibonacci(e.target.checked)}
-          />
-          <span>Fibonacci Retracement</span>
-        </label>
+        <div className="controls-left">
+          <label className="control-label">
+            <input
+              type="checkbox"
+              checked={showBollinger}
+              onChange={(e) => setShowBollinger(e.target.checked)}
+            />
+            <span>Bollinger Bands</span>
+          </label>
+          <label className="control-label">
+            <input
+              type="checkbox"
+              checked={showFibonacci}
+              onChange={(e) => setShowFibonacci(e.target.checked)}
+            />
+            <span>Fibonacci Retracement</span>
+          </label>
+        </div>
+        <div className="period-selector">
+          <button
+            className={period === '1mo' ? 'active' : ''}
+            onClick={() => setPeriod('1mo')}
+          >
+            1 Ay
+          </button>
+          <button
+            className={period === '3mo' ? 'active' : ''}
+            onClick={() => setPeriod('3mo')}
+          >
+            3 Ay
+          </button>
+          <button
+            className={period === '6mo' ? 'active' : ''}
+            onClick={() => setPeriod('6mo')}
+          >
+            6 Ay
+          </button>
+          <button
+            className={period === '1y' ? 'active' : ''}
+            onClick={() => setPeriod('1y')}
+          >
+            1 Yıl
+          </button>
+        </div>
       </div>
-      <div ref={chartContainerRef} className="chart-wrapper" />
+      {loading ? (
+        <div className="chart-loading">Grafik yükleniyor...</div>
+      ) : (
+        <div ref={chartContainerRef} className="chart-wrapper" />
+      )}
       <div className="chart-info">
         <div className="info-item">
           <span className="info-label">Güncel:</span>
@@ -262,9 +282,58 @@ const StockChart: React.FC<StockChartProps> = ({
 
         .chart-controls {
           display: flex;
+          justify-content: space-between;
+          align-items: center;
           gap: 20px;
           padding: 12px 16px;
           background: rgba(255, 255, 255, 0.05);
+          border-radius: 8px;
+          flex-wrap: wrap;
+        }
+
+        .controls-left {
+          display: flex;
+          gap: 20px;
+        }
+
+        .period-selector {
+          display: flex;
+          gap: 8px;
+          background: rgba(0, 0, 0, 0.2);
+          padding: 4px;
+          border-radius: 6px;
+        }
+
+        .period-selector button {
+          padding: 6px 14px;
+          background: transparent;
+          border: none;
+          color: rgba(255, 255, 255, 0.6);
+          border-radius: 4px;
+          font-size: 13px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .period-selector button:hover {
+          color: rgba(255, 255, 255, 0.9);
+          background: rgba(255, 255, 255, 0.05);
+        }
+
+        .period-selector button.active {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: #fff;
+        }
+
+        .chart-loading {
+          height: 400px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 16px;
+          opacity: 0.7;
+          background: rgba(255, 255, 255, 0.03);
           border-radius: 8px;
         }
 

@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import dataAggregator from '../services/dataAggregator.service';
+import yahooFinanceService from '../services/yahooFinance.service';
 import logger from '../utils/logger';
 
 const router = Router();
@@ -124,6 +125,56 @@ router.delete('/cache/all', (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       error: error.message || 'Cache temizlenemedi',
+    });
+  }
+});
+
+/**
+ * GET /api/stocks/:symbol/historical
+ * Belirli bir hisse için gerçek historical price data (candlestick) getirir
+ * Query params: period (1d, 5d, 1mo, 3mo, 6mo, 1y) - default: 3mo
+ */
+router.get('/:symbol/historical', async (req: Request, res: Response) => {
+  const { symbol } = req.params;
+  const { period = '3mo' } = req.query;
+
+  try {
+    logger.info(`API request for historical data: ${symbol} (${period})`);
+
+    if (!symbol || symbol.length < 2) {
+      return res.status(400).json({
+        success: false,
+        error: 'Geçerli bir hisse sembolü giriniz',
+      });
+    }
+
+    const validPeriods = ['1d', '5d', '1mo', '3mo', '6mo', '1y'];
+    if (!validPeriods.includes(period as string)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Geçerli bir period giriniz (1d, 5d, 1mo, 3mo, 6mo, 1y)',
+      });
+    }
+
+    const data = await yahooFinanceService.getHistoricalData(
+      symbol,
+      period as '1d' | '5d' | '1mo' | '3mo' | '6mo' | '1y'
+    );
+
+    res.json({
+      success: true,
+      data,
+      count: data.length,
+      period,
+      symbol: symbol.toUpperCase(),
+    });
+
+  } catch (error: any) {
+    logger.error(`Historical data API error for ${symbol}:`, error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Historical data alınamadı',
     });
   }
 });

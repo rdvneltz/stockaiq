@@ -171,6 +171,68 @@ class YahooFinanceService {
   }
 
   /**
+   * Yahoo Finance'den historical price data çeker (candlestick için)
+   */
+  async getHistoricalData(symbol: string, period: '1d' | '5d' | '1mo' | '3mo' | '6mo' | '1y' = '3mo'): Promise<any[]> {
+    const yahooSymbol = this.formatSymbol(symbol);
+    logger.info(`Fetching historical data from Yahoo Finance: ${yahooSymbol} (${period})`);
+
+    try {
+      const queryOptions = { period1: this.getPeriodStartDate(period), period2: new Date() };
+      const result = await yahooFinance.historical(yahooSymbol, queryOptions);
+
+      // Yahoo Finance formatını lightweight-charts formatına dönüştür
+      const chartData = result.map(candle => ({
+        time: Math.floor(candle.date.getTime() / 1000), // Unix timestamp in seconds
+        open: candle.open,
+        high: candle.high,
+        low: candle.low,
+        close: candle.close,
+        volume: candle.volume || 0
+      }));
+
+      logger.info(`Historical data fetched: ${chartData.length} candles`);
+      return chartData;
+    } catch (error: any) {
+      logger.error(`Yahoo Finance historical data error for ${symbol}:`, error);
+      throw new Error(`Historical data çekme hatası: ${error.message}`);
+    }
+  }
+
+  /**
+   * Period string'ini başlangıç tarihine çevirir
+   */
+  private getPeriodStartDate(period: string): Date {
+    const now = new Date();
+    const startDate = new Date(now);
+
+    switch (period) {
+      case '1d':
+        startDate.setDate(now.getDate() - 1);
+        break;
+      case '5d':
+        startDate.setDate(now.getDate() - 5);
+        break;
+      case '1mo':
+        startDate.setMonth(now.getMonth() - 1);
+        break;
+      case '3mo':
+        startDate.setMonth(now.getMonth() - 3);
+        break;
+      case '6mo':
+        startDate.setMonth(now.getMonth() - 6);
+        break;
+      case '1y':
+        startDate.setFullYear(now.getFullYear() - 1);
+        break;
+      default:
+        startDate.setMonth(now.getMonth() - 3);
+    }
+
+    return startDate;
+  }
+
+  /**
    * Health check - Yahoo Finance servisinin çalışıp çalışmadığını kontrol eder
    */
   async healthCheck(): Promise<{ status: boolean; responseTime: number; error?: string }> {
