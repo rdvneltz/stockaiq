@@ -1,6 +1,9 @@
 import yahooFinanceService from './yahooFinance.service';
 import kapService from './kap.service';
 import investingService from './investing.service';
+import twelveDataService from './twelveData.service';
+import finnhubService from './finnhub.service';
+import fmpService from './fmp.service';
 import logger from '../utils/logger';
 import { SystemHealth, DataSourceHealth } from '../types';
 
@@ -17,14 +20,20 @@ class HealthCheckService {
 
     try {
       // Tüm kaynaklarda paralel health check yap
-      const [yahooHealth, kapHealth, investingHealth] = await Promise.allSettled([
+      const [yahooHealth, kapHealth, investingHealth, twelveDataHealth, finnhubHealth, fmpHealth] = await Promise.allSettled([
         this.checkYahooFinance(),
         this.checkKAP(),
         this.checkInvesting(),
+        this.checkTwelveData(),
+        this.checkFinnhub(),
+        this.checkFMP(),
       ]);
 
       const dataSources: DataSourceHealth[] = [
         this.getHealthResult('Yahoo Finance', yahooHealth),
+        this.getHealthResult('Twelve Data', twelveDataHealth),
+        this.getHealthResult('Finnhub', finnhubHealth),
+        this.getHealthResult('FMP (Financial Modeling Prep)', fmpHealth),
         this.getHealthResult('KAP (Kamu Aydınlatma Platformu)', kapHealth),
         this.getHealthResult('Investing.com', investingHealth),
       ];
@@ -138,6 +147,84 @@ class HealthCheckService {
   }
 
   /**
+   * Twelve Data sağlık kontrolü
+   */
+  private async checkTwelveData(): Promise<DataSourceHealth> {
+    const startTime = Date.now();
+    try {
+      const result = await twelveDataService.healthCheck();
+
+      return {
+        name: 'Twelve Data',
+        status: result.status ? 'operational' : 'down',
+        lastCheck: new Date(),
+        responseTime: result.responseTime,
+        errorMessage: result.error,
+      };
+    } catch (error: any) {
+      return {
+        name: 'Twelve Data',
+        status: 'down',
+        lastCheck: new Date(),
+        responseTime: Date.now() - startTime,
+        errorMessage: error.message,
+      };
+    }
+  }
+
+  /**
+   * Finnhub sağlık kontrolü
+   */
+  private async checkFinnhub(): Promise<DataSourceHealth> {
+    const startTime = Date.now();
+    try {
+      const result = await finnhubService.healthCheck();
+
+      return {
+        name: 'Finnhub',
+        status: result.status ? 'operational' : 'down',
+        lastCheck: new Date(),
+        responseTime: result.responseTime,
+        errorMessage: result.error,
+      };
+    } catch (error: any) {
+      return {
+        name: 'Finnhub',
+        status: 'down',
+        lastCheck: new Date(),
+        responseTime: Date.now() - startTime,
+        errorMessage: error.message,
+      };
+    }
+  }
+
+  /**
+   * FMP sağlık kontrolü
+   */
+  private async checkFMP(): Promise<DataSourceHealth> {
+    const startTime = Date.now();
+    try {
+      const result = await fmpService.healthCheck();
+
+      return {
+        name: 'FMP',
+        status: result.status ? 'operational' : 'down',
+        lastCheck: new Date(),
+        responseTime: result.responseTime,
+        errorMessage: result.error,
+      };
+    } catch (error: any) {
+      return {
+        name: 'FMP',
+        status: 'down',
+        lastCheck: new Date(),
+        responseTime: Date.now() - startTime,
+        errorMessage: error.message,
+      };
+    }
+  }
+
+  /**
    * Promise.allSettled sonucundan sağlık bilgisi çıkarır
    */
   private getHealthResult(
@@ -228,6 +315,16 @@ class HealthCheckService {
         case 'yahoo':
         case 'yahoofinance':
           return await this.checkYahooFinance();
+
+        case 'twelvedata':
+        case 'twelve':
+          return await this.checkTwelveData();
+
+        case 'finnhub':
+          return await this.checkFinnhub();
+
+        case 'fmp':
+          return await this.checkFMP();
 
         case 'kap':
           return await this.checkKAP();

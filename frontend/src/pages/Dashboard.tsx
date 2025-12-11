@@ -57,8 +57,24 @@ const Dashboard: React.FC = () => {
   const loadStocks = async () => {
     setLoading(true);
     try {
-      const stocksData = await stockApi.getMultipleStocks(watchlist);
-      setStocks(stocksData);
+      // BIST100 çok fazla, batch'ler halinde çek (10'luk gruplar)
+      const batchSize = 10;
+      const batches: string[][] = [];
+
+      for (let i = 0; i < watchlist.length; i += batchSize) {
+        batches.push(watchlist.slice(i, i + batchSize));
+      }
+
+      // Tüm batch'leri paralel çek
+      const batchPromises = batches.map(batch => stockApi.getMultipleStocks(batch));
+      const batchResults = await Promise.allSettled(batchPromises);
+
+      // Başarılı sonuçları birleştir
+      const allStocks = batchResults
+        .filter((result): result is PromiseFulfilledResult<StockData[]> => result.status === 'fulfilled')
+        .flatMap(result => result.value);
+
+      setStocks(allStocks);
     } catch (error) {
       console.error('Failed to load stocks:', error);
     } finally {
@@ -595,10 +611,12 @@ const StockCard: React.FC<StockCardProps> = ({ stock, isFavorite, onToggleFavori
           text-transform: uppercase;
           letter-spacing: 0.5px;
           box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+          z-index: 5;
         }
 
         .card-header {
           margin-bottom: 16px;
+          padding-top: 32px;
         }
 
         .card-header h3 {
