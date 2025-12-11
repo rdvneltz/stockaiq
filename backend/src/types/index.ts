@@ -40,6 +40,9 @@ export interface StockData {
     pdEBITDA: number | null; // PD/EBITDA
     shares: number | null; // İhraç Edilen Hisse Sayısı
     paidCapital: number | null; // Ödenmiş Sermaye
+    eps: number | null; // Hisse Başına Kazanç (Earnings Per Share)
+    roe: number | null; // Öz Sermaye Karlılığı (Return on Equity) %
+    roa: number | null; // Varlık Karlılığı (Return on Assets) %
   };
 
   // Finansal Tablo Verileri
@@ -48,7 +51,8 @@ export interface StockData {
     revenue: number | null; // Hasılat
     grossProfit: number | null; // Brüt Kar
     netIncome: number | null; // Net Kar
-    profitability: number | null; // Karlılık %
+    profitability: number | null; // Net Karlılık (Net Kar Marjı) %
+    grossProfitMargin: number | null; // Brüt Kar Marjı %
     equity: number | null; // Öz Sermaye
     currentAssets: number | null; // Dönen Varlıklar
     fixedAssets: number | null; // Duran Varlıklar
@@ -62,6 +66,9 @@ export interface StockData {
     investmentProperty: number | null; // Yatırım Amaçlı Gayrimenkuller
     prepaidExpenses: number | null; // Peşin Ödenmiş Giderler
     deferredTax: number | null; // Ertelenmiş Vergi
+    totalDebt: number | null; // Toplam Borç
+    netDebt: number | null; // Net Borç (Borç - Nakit)
+    workingCapital: number | null; // İşletme Sermayesi
   };
 
   // Ek Analizler
@@ -70,6 +77,21 @@ export interface StockData {
     foreignSalesRatio: number | null; // Yurtdışı Satış %
     exportRatio: number | null; // İhracat %
     averageDividend: number | null; // Ortalama Temettü
+  };
+
+  // Likidite Oranları
+  liquidity: {
+    currentRatio: number | null; // Cari Oran (Dönen Varlıklar / Kısa Vadeli Borçlar)
+    acidTestRatio: number | null; // Asit-Test Oranı
+    cashRatio: number | null; // Nakit Oranı
+  };
+
+  // Borçluluk Oranları
+  leverage: {
+    debtToEquity: number | null; // Borç / Öz Sermaye
+    debtToAssets: number | null; // Borç / Varlıklar
+    shortTermDebtRatio: number | null; // Kısa Vadeli Borç Oranı %
+    longTermDebtRatio: number | null; // Uzun Vadeli Borç Oranı %
   };
 
   // Tarihsel Karlılık

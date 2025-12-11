@@ -272,18 +272,80 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onRemove, onClick }) => {
 
       <div className="card-stats">
         <div className="stat">
-          <span className="stat-label">Hacim</span>
-          <span className="stat-value">
-            {stock.tradingData.volume ? `${(stock.tradingData.volume / 1000000).toFixed(1)}M` : '-'}
+          <span className="stat-label">PD/DD</span>
+          <span
+            className="stat-value"
+            style={{
+              color: stock.fundamentals.pdDD
+                ? stock.fundamentals.pdDD < 1 ? '#10b981'
+                : stock.fundamentals.pdDD > 3 ? '#ef4444'
+                : '#fff'
+                : '#fff'
+            }}
+          >
+            {stock.fundamentals.pdDD?.toFixed(2) || '-'}
           </span>
         </div>
         <div className="stat">
           <span className="stat-label">F/K</span>
-          <span className="stat-value">{stock.fundamentals.fk?.toFixed(2) || '-'}</span>
+          <span
+            className="stat-value"
+            style={{
+              color: stock.fundamentals.fk
+                ? stock.fundamentals.fk < 10 ? '#10b981'
+                : stock.fundamentals.fk > 20 ? '#ef4444'
+                : '#fff'
+                : '#fff'
+            }}
+          >
+            {stock.fundamentals.fk?.toFixed(2) || '-'}
+          </span>
         </div>
         <div className="stat">
-          <span className="stat-label">52H Yüksek</span>
-          <span className="stat-value">{formatCurrency(stock.priceData.week52High, 2)}</span>
+          <span className="stat-label">P.Değeri</span>
+          <span className="stat-value">
+            {stock.fundamentals.marketCap
+              ? stock.fundamentals.marketCap >= 1_000_000_000
+                ? `${(stock.fundamentals.marketCap / 1_000_000_000).toFixed(1)}B`
+                : `${(stock.fundamentals.marketCap / 1_000_000).toFixed(0)}M`
+              : '-'
+            }
+          </span>
+        </div>
+        <div className="stat">
+          <span className="stat-label">Hacim (TL)</span>
+          <span className="stat-value">
+            {stock.tradingData.volumeTL
+              ? stock.tradingData.volumeTL >= 1_000_000
+                ? `${(stock.tradingData.volumeTL / 1_000_000).toFixed(1)}M`
+                : `${(stock.tradingData.volumeTL / 1_000).toFixed(0)}K`
+              : '-'
+            }
+          </span>
+        </div>
+        <div className="stat">
+          <span className="stat-label">52H Değişim</span>
+          <span
+            className="stat-value"
+            style={{ color: getChangeColor(stock.priceData.week52Change) }}
+          >
+            {stock.priceData.week52Change ? formatPercent(stock.priceData.week52Change) : '-'}
+          </span>
+        </div>
+        <div className="stat">
+          <span className="stat-label">ROE</span>
+          <span
+            className="stat-value"
+            style={{
+              color: stock.fundamentals.roe
+                ? stock.fundamentals.roe > 15 ? '#10b981'
+                : stock.fundamentals.roe < 5 ? '#ef4444'
+                : '#fff'
+                : '#fff'
+            }}
+          >
+            {stock.fundamentals.roe ? `${stock.fundamentals.roe.toFixed(1)}%` : '-'}
+          </span>
         </div>
       </div>
 
@@ -372,8 +434,8 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onRemove, onClick }) => {
 
         .card-stats {
           display: grid;
-          grid-template-columns: repeat(3, 1fr);
-          gap: 12px;
+          grid-template-columns: repeat(2, 1fr);
+          gap: 10px;
         }
 
         .stat {
@@ -403,6 +465,8 @@ interface StockDetailModalProps {
 }
 
 const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, onClose }) => {
+  const [activeTab, setActiveTab] = React.useState<'overview' | 'balance' | 'profitability' | 'valuation' | 'technical'>('overview');
+
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -424,38 +488,238 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, onClose }) =
           </div>
         </div>
 
+        {/* Tabs */}
+        <div className="modal-tabs">
+          <button
+            className={`tab ${activeTab === 'overview' ? 'active' : ''}`}
+            onClick={() => setActiveTab('overview')}
+          >
+            📊 Özet
+          </button>
+          <button
+            className={`tab ${activeTab === 'balance' ? 'active' : ''}`}
+            onClick={() => setActiveTab('balance')}
+          >
+            📋 Bilanço
+          </button>
+          <button
+            className={`tab ${activeTab === 'profitability' ? 'active' : ''}`}
+            onClick={() => setActiveTab('profitability')}
+          >
+            💰 Karlılık
+          </button>
+          <button
+            className={`tab ${activeTab === 'valuation' ? 'active' : ''}`}
+            onClick={() => setActiveTab('valuation')}
+          >
+            📈 Değerleme
+          </button>
+          <button
+            className={`tab ${activeTab === 'technical' ? 'active' : ''}`}
+            onClick={() => setActiveTab('technical')}
+          >
+            📉 Teknik
+          </button>
+        </div>
+
         <div className="modal-body">
-          <div className="detail-section">
-            <h3>📊 Fiyat Bilgileri</h3>
-            <div className="detail-grid">
-              <DetailRow label="Gün Açılış" value={formatCurrency(stock.tradingData.dailyOpen, 2)} />
-              <DetailRow label="Gün Yüksek" value={formatCurrency(stock.priceData.dayHigh, 2)} />
-              <DetailRow label="Gün Düşük" value={formatCurrency(stock.priceData.dayLow, 2)} />
-              <DetailRow label="52H Yüksek" value={formatCurrency(stock.priceData.week52High, 2)} />
-              <DetailRow label="52H Düşük" value={formatCurrency(stock.priceData.week52Low, 2)} />
-              <DetailRow label="Hacim" value={stock.tradingData.volume?.toLocaleString('tr-TR') || '-'} />
-            </div>
-          </div>
+          {activeTab === 'overview' && (
+            <>
+              <div className="detail-section">
+                <h3>📊 Fiyat Bilgileri</h3>
+                <div className="detail-grid">
+                  <DetailRow label="Güncel Fiyat" value={formatCurrency(stock.currentPrice, 2)} />
+                  <DetailRow label="Gün Açılış" value={formatCurrency(stock.tradingData.dailyOpen, 2)} />
+                  <DetailRow label="Gün Yüksek" value={formatCurrency(stock.priceData.dayHigh, 2)} />
+                  <DetailRow label="Gün Düşük" value={formatCurrency(stock.priceData.dayLow, 2)} />
+                  <DetailRow label="Gün Ortalaması" value={formatCurrency(stock.priceData.dayAverage, 2)} />
+                  <DetailRow label="Günlük Değişim" value={formatPercent(stock.tradingData.dailyChangePercent)} />
+                </div>
+              </div>
 
-          <div className="detail-section">
-            <h3>💰 Temel Göstergeler</h3>
-            <div className="detail-grid">
-              <DetailRow label="Piyasa Değeri" value={stock.fundamentals.marketCap ? `${(stock.fundamentals.marketCap / 1000000000).toFixed(2)}B` : '-'} />
-              <DetailRow label="F/K Oranı" value={stock.fundamentals.fk?.toFixed(2) || '-'} />
-              <DetailRow label="PD/DD" value={stock.fundamentals.pdDD?.toFixed(2) || '-'} />
-              <DetailRow label="FD/FAVO" value={stock.fundamentals.fdFAVO?.toFixed(2) || '-'} />
-            </div>
-          </div>
+              <div className="detail-section">
+                <h3>💹 İşlem Bilgileri</h3>
+                <div className="detail-grid">
+                  <DetailRow label="Alış (Bid)" value={formatCurrency(stock.tradingData.bid, 2)} />
+                  <DetailRow label="Satış (Ask)" value={formatCurrency(stock.tradingData.ask, 2)} />
+                  <DetailRow label="Hacim" value={stock.tradingData.volume?.toLocaleString('tr-TR') || '-'} />
+                  <DetailRow label="Hacim (TL)" value={stock.tradingData.volumeTL ? `${(stock.tradingData.volumeTL / 1_000_000).toFixed(2)}M ₺` : '-'} />
+                  <DetailRow label="Lot Büyüklüğü" value={stock.tradingData.lotSize?.toString() || '-'} />
+                </div>
+              </div>
 
-          <div className="detail-section">
-            <h3>📈 Finansal Tablo</h3>
-            <div className="detail-grid">
-              <DetailRow label="Hasılat" value={stock.financials.revenue ? `${(stock.financials.revenue / 1000000).toFixed(1)}M` : '-'} />
-              <DetailRow label="Net Kar" value={stock.financials.netIncome ? `${(stock.financials.netIncome / 1000000).toFixed(1)}M` : '-'} />
-              <DetailRow label="Karlılık %" value={stock.financials.profitability ? `${stock.financials.profitability.toFixed(2)}%` : '-'} />
-              <DetailRow label="Öz Sermaye" value={stock.financials.equity ? `${(stock.financials.equity / 1000000).toFixed(1)}M` : '-'} />
-            </div>
-          </div>
+              <div className="detail-section">
+                <h3>🎯 Temel Göstergeler</h3>
+                <div className="detail-grid">
+                  <DetailRow label="Piyasa Değeri" value={stock.fundamentals.marketCap ? `${(stock.fundamentals.marketCap / 1_000_000_000).toFixed(2)}B ₺` : '-'} />
+                  <DetailRow label="F/K Oranı" value={stock.fundamentals.fk?.toFixed(2) || '-'} />
+                  <DetailRow label="PD/DD" value={stock.fundamentals.pdDD?.toFixed(2) || '-'} />
+                  <DetailRow label="FD/FAVO" value={stock.fundamentals.fdFAVO?.toFixed(2) || '-'} />
+                  <DetailRow label="PD/EBITDA" value={stock.fundamentals.pdEBITDA?.toFixed(2) || '-'} />
+                  <DetailRow label="Hisse Sayısı" value={stock.fundamentals.shares?.toLocaleString('tr-TR') || '-'} />
+                </div>
+              </div>
+            </>
+          )}
+
+          {activeTab === 'balance' && (
+            <>
+              <div className="detail-section">
+                <h3>💼 Varlıklar</h3>
+                <div className="detail-grid">
+                  <DetailRow label="Dönen Varlıklar" value={stock.financials.currentAssets ? `${(stock.financials.currentAssets / 1_000_000).toFixed(1)}M ₺` : '-'} />
+                  <DetailRow label="├─ Ticari Alacaklar" value={stock.financials.tradeReceivables ? `${(stock.financials.tradeReceivables / 1_000_000).toFixed(1)}M ₺` : '-'} />
+                  <DetailRow label="├─ Finansal Yatırımlar" value={stock.financials.financialInvestments ? `${(stock.financials.financialInvestments / 1_000_000).toFixed(1)}M ₺` : '-'} />
+                  <DetailRow label="Duran Varlıklar" value={stock.financials.fixedAssets ? `${(stock.financials.fixedAssets / 1_000_000).toFixed(1)}M ₺` : '-'} />
+                  <DetailRow label="├─ Yatırım Amaçlı GYO" value={stock.financials.investmentProperty ? `${(stock.financials.investmentProperty / 1_000_000).toFixed(1)}M ₺` : '-'} />
+                  <DetailRow label="TOPLAM VARLIKLAR" value={stock.financials.totalAssets ? `${(stock.financials.totalAssets / 1_000_000).toFixed(1)}M ₺` : '-'} bold />
+                </div>
+              </div>
+
+              <div className="detail-section">
+                <h3>📊 Yükümlülükler ve Öz Sermaye</h3>
+                <div className="detail-grid">
+                  <DetailRow label="Kısa Vadeli Borçlar" value={stock.financials.shortTermLiabilities ? `${(stock.financials.shortTermLiabilities / 1_000_000).toFixed(1)}M ₺` : '-'} />
+                  <DetailRow label="├─ KV Banka Kredisi" value={stock.financials.shortTermBankLoans ? `${(stock.financials.shortTermBankLoans / 1_000_000).toFixed(1)}M ₺` : '-'} />
+                  <DetailRow label="Uzun Vadeli Borçlar" value={stock.financials.longTermLiabilities ? `${(stock.financials.longTermLiabilities / 1_000_000).toFixed(1)}M ₺` : '-'} />
+                  <DetailRow label="├─ UV Banka Kredisi" value={stock.financials.longTermBankLoans ? `${(stock.financials.longTermBankLoans / 1_000_000).toFixed(1)}M ₺` : '-'} />
+                  <DetailRow label="TOPLAM BORÇ" value={stock.financials.totalDebt ? `${(stock.financials.totalDebt / 1_000_000).toFixed(1)}M ₺` : '-'} bold />
+                  <DetailRow label="Öz Sermaye" value={stock.financials.equity ? `${(stock.financials.equity / 1_000_000).toFixed(1)}M ₺` : '-'} bold />
+                </div>
+              </div>
+
+              <div className="detail-section">
+                <h3>🔄 Likidite Oranları</h3>
+                <div className="detail-grid">
+                  <DetailRow label="Cari Oran" value={stock.liquidity.currentRatio?.toFixed(2) || '-'} />
+                  <DetailRow label="Asit-Test Oranı" value={stock.liquidity.acidTestRatio?.toFixed(2) || '-'} />
+                  <DetailRow label="Nakit Oranı" value={stock.liquidity.cashRatio?.toFixed(2) || '-'} />
+                  <DetailRow label="İşletme Sermayesi" value={stock.financials.workingCapital ? `${(stock.financials.workingCapital / 1_000_000).toFixed(1)}M ₺` : '-'} />
+                </div>
+              </div>
+            </>
+          )}
+
+          {activeTab === 'profitability' && (
+            <>
+              <div className="detail-section">
+                <h3>💵 Gelir Tablosu</h3>
+                <div className="detail-grid">
+                  <DetailRow label="Hasılat (Revenue)" value={stock.financials.revenue ? `${(stock.financials.revenue / 1_000_000).toFixed(1)}M ₺` : '-'} bold />
+                  <DetailRow label="Brüt Kar" value={stock.financials.grossProfit ? `${(stock.financials.grossProfit / 1_000_000).toFixed(1)}M ₺` : '-'} />
+                  <DetailRow label="Brüt Kar Marjı" value={stock.financials.grossProfitMargin ? `${stock.financials.grossProfitMargin.toFixed(2)}%` : '-'} />
+                  <DetailRow label="Net Kar" value={stock.financials.netIncome ? `${(stock.financials.netIncome / 1_000_000).toFixed(1)}M ₺` : '-'} bold />
+                  <DetailRow label="Net Kar Marjı" value={stock.financials.profitability ? `${stock.financials.profitability.toFixed(2)}%` : '-'} />
+                  <DetailRow label="Dönem" value={stock.financials.period || '-'} />
+                </div>
+              </div>
+
+              <div className="detail-section">
+                <h3>📈 Karlılık Oranları</h3>
+                <div className="detail-grid">
+                  <DetailRow label="ROE (Öz Sermaye Karlılığı)" value={stock.fundamentals.roe ? `${stock.fundamentals.roe.toFixed(2)}%` : '-'} />
+                  <DetailRow label="ROA (Varlık Karlılığı)" value={stock.fundamentals.roa ? `${stock.fundamentals.roa.toFixed(2)}%` : '-'} />
+                  <DetailRow label="EPS (Hisse Başı Kazanç)" value={stock.fundamentals.eps ? `${stock.fundamentals.eps.toFixed(4)} ₺` : '-'} />
+                  <DetailRow label="Ortalama Temettü" value={stock.analysis.averageDividend ? `${stock.analysis.averageDividend.toFixed(2)}%` : '-'} />
+                </div>
+              </div>
+
+              <div className="detail-section">
+                <h3>🌍 Satış Dağılımı</h3>
+                <div className="detail-grid">
+                  <DetailRow label="Yurtiçi Satışlar" value={stock.analysis.domesticSalesRatio ? `${stock.analysis.domesticSalesRatio.toFixed(1)}%` : '-'} />
+                  <DetailRow label="Yurtdışı Satışlar" value={stock.analysis.foreignSalesRatio ? `${stock.analysis.foreignSalesRatio.toFixed(1)}%` : '-'} />
+                  <DetailRow label="İhracat Oranı" value={stock.analysis.exportRatio ? `${stock.analysis.exportRatio.toFixed(1)}%` : '-'} />
+                </div>
+              </div>
+            </>
+          )}
+
+          {activeTab === 'valuation' && (
+            <>
+              <div className="detail-section">
+                <h3>🏷️ Değerleme Metrikleri</h3>
+                <div className="detail-grid">
+                  <DetailRow label="F/K (Price/Earnings)" value={stock.fundamentals.fk?.toFixed(2) || '-'} />
+                  <DetailRow label="PD/DD (Price/Book)" value={stock.fundamentals.pdDD?.toFixed(2) || '-'} />
+                  <DetailRow label="FD/FAVO" value={stock.fundamentals.fdFAVO?.toFixed(2) || '-'} />
+                  <DetailRow label="PD/EBITDA" value={stock.fundamentals.pdEBITDA?.toFixed(2) || '-'} />
+                  <DetailRow label="Piyasa Değeri" value={stock.fundamentals.marketCap ? `${(stock.fundamentals.marketCap / 1_000_000_000).toFixed(2)}B ₺` : '-'} />
+                </div>
+              </div>
+
+              <div className="detail-section">
+                <h3>💳 Borçluluk Analizi</h3>
+                <div className="detail-grid">
+                  <DetailRow label="Toplam Borç" value={stock.financials.totalDebt ? `${(stock.financials.totalDebt / 1_000_000).toFixed(1)}M ₺` : '-'} />
+                  <DetailRow label="Net Borç" value={stock.financials.netDebt ? `${(stock.financials.netDebt / 1_000_000).toFixed(1)}M ₺` : '-'} />
+                  <DetailRow label="Borç/Öz Sermaye" value={stock.leverage.debtToEquity?.toFixed(2) || '-'} />
+                  <DetailRow label="Borç/Varlıklar" value={stock.leverage.debtToAssets?.toFixed(2) || '-'} />
+                  <DetailRow label="KV Borç Oranı" value={stock.leverage.shortTermDebtRatio ? `${stock.leverage.shortTermDebtRatio.toFixed(1)}%` : '-'} />
+                  <DetailRow label="UV Borç Oranı" value={stock.leverage.longTermDebtRatio ? `${stock.leverage.longTermDebtRatio.toFixed(1)}%` : '-'} />
+                </div>
+              </div>
+
+              <div className="detail-section">
+                <h3>💎 Sermaye Yapısı</h3>
+                <div className="detail-grid">
+                  <DetailRow label="Ödenmiş Sermaye" value={stock.fundamentals.paidCapital ? `${(stock.fundamentals.paidCapital / 1_000_000).toFixed(1)}M ₺` : '-'} />
+                  <DetailRow label="İhraç Edilen Hisse" value={stock.fundamentals.shares?.toLocaleString('tr-TR') || '-'} />
+                  <DetailRow label="Öz Sermaye" value={stock.financials.equity ? `${(stock.financials.equity / 1_000_000).toFixed(1)}M ₺` : '-'} />
+                  <DetailRow label="Hisse Başı Değer" value={stock.fundamentals.shares && stock.financials.equity ? `${(stock.financials.equity / stock.fundamentals.shares).toFixed(2)} ₺` : '-'} />
+                </div>
+              </div>
+            </>
+          )}
+
+          {activeTab === 'technical' && (
+            <>
+              <div className="detail-section">
+                <h3>📉 Fiyat Performansı</h3>
+                <div className="detail-grid">
+                  <DetailRow label="52 Hafta Yüksek" value={formatCurrency(stock.priceData.week52High, 2)} />
+                  <DetailRow label="52 Hafta Düşük" value={formatCurrency(stock.priceData.week52Low, 2)} />
+                  <DetailRow label="52H Değişim" value={stock.priceData.week52Change ? formatPercent(stock.priceData.week52Change) : '-'} />
+                  <DetailRow label="52H Değişim (TL)" value={stock.priceData.week52ChangeTL ? `${stock.priceData.week52ChangeTL.toFixed(2)} ₺` : '-'} />
+                  <DetailRow label="1 Hafta Yüksek" value={formatCurrency(stock.priceData.week1High, 2)} />
+                  <DetailRow label="1 Hafta Düşük" value={formatCurrency(stock.priceData.week1Low, 2)} />
+                </div>
+              </div>
+
+              <div className="detail-section">
+                <h3>📊 İşlem Verileri</h3>
+                <div className="detail-grid">
+                  <DetailRow label="Gün Açılış" value={formatCurrency(stock.tradingData.dailyOpen, 2)} />
+                  <DetailRow label="Gün Yüksek" value={formatCurrency(stock.priceData.dayHigh, 2)} />
+                  <DetailRow label="Gün Düşük" value={formatCurrency(stock.priceData.dayLow, 2)} />
+                  <DetailRow label="Gün Ortalama" value={formatCurrency(stock.priceData.dayAverage, 2)} />
+                  <DetailRow label="Günlük Değişim" value={formatCurrency(stock.tradingData.dailyChange, 2)} />
+                  <DetailRow label="Günlük Değişim %" value={formatPercent(stock.tradingData.dailyChangePercent)} />
+                </div>
+              </div>
+
+              <div className="detail-section">
+                <h3>📍 52 Hafta Pozisyonu</h3>
+                {stock.priceData.week52Low && stock.priceData.week52High && stock.currentPrice && (
+                  <div className="range-indicator">
+                    <div className="range-bar">
+                      <div
+                        className="range-fill"
+                        style={{
+                          width: `${((stock.currentPrice - stock.priceData.week52Low) / (stock.priceData.week52High - stock.priceData.week52Low) * 100).toFixed(1)}%`
+                        }}
+                      ></div>
+                    </div>
+                    <div className="range-labels">
+                      <span>52H Düşük: {formatCurrency(stock.priceData.week52Low, 2)}</span>
+                      <span>Pozisyon: {((stock.currentPrice - stock.priceData.week52Low) / (stock.priceData.week52High - stock.priceData.week52Low) * 100).toFixed(1)}%</span>
+                      <span>52H Yüksek: {formatCurrency(stock.priceData.week52High, 2)}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
 
         <style>{`
@@ -534,11 +798,68 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, onClose }) =
             text-align: right;
           }
 
+          .modal-tabs {
+            display: flex;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            overflow-x: auto;
+          }
+
+          .modal-tabs .tab {
+            flex: 1;
+            padding: 16px 20px;
+            background: transparent;
+            border: none;
+            color: rgba(255, 255, 255, 0.6);
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.3s;
+            border-bottom: 2px solid transparent;
+            white-space: nowrap;
+          }
+
+          .modal-tabs .tab:hover {
+            color: rgba(255, 255, 255, 0.9);
+            background: rgba(255, 255, 255, 0.05);
+          }
+
+          .modal-tabs .tab.active {
+            color: #fff;
+            border-bottom-color: #667eea;
+            background: rgba(102, 126, 234, 0.1);
+          }
+
           .modal-body {
             padding: 32px;
             display: flex;
             flex-direction: column;
             gap: 32px;
+          }
+
+          .range-indicator {
+            margin-top: 16px;
+          }
+
+          .range-bar {
+            width: 100%;
+            height: 12px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            overflow: hidden;
+            margin-bottom: 12px;
+          }
+
+          .range-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #10b981 0%, #667eea 50%, #ef4444 100%);
+            transition: width 0.3s;
+          }
+
+          .range-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            opacity: 0.7;
           }
 
           .detail-section h3 {
@@ -575,10 +896,10 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, onClose }) =
   );
 };
 
-const DetailRow: React.FC<{ label: string; value: string }> = ({ label, value }) => (
-  <div className="detail-row">
-    <span className="detail-label">{label}</span>
-    <span className="detail-value">{value}</span>
+const DetailRow: React.FC<{ label: string; value: string; bold?: boolean }> = ({ label, value, bold }) => (
+  <div className="detail-row" style={bold ? { background: 'rgba(102, 126, 234, 0.15)', borderLeft: '3px solid #667eea' } : {}}>
+    <span className="detail-label" style={bold ? { fontWeight: '700', opacity: 1 } : {}}>{label}</span>
+    <span className="detail-value" style={bold ? { fontWeight: '700', fontSize: '15px' } : {}}>{value}</span>
     <style>{`
       .detail-row {
         display: flex;

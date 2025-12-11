@@ -112,6 +112,9 @@ class DataAggregatorService {
         pdEBITDA: yahoo.fundamentals?.pdEBITDA || null,
         shares: yahoo.fundamentals?.shares || kap.fundamentals?.shares || null,
         paidCapital: kap.fundamentals?.paidCapital || null,
+        eps: null, // Hesaplanacak
+        roe: null, // Hesaplanacak
+        roa: null, // Hesaplanacak
       },
 
       financials: {
@@ -120,9 +123,10 @@ class DataAggregatorService {
         grossProfit: kap.financials?.grossProfit || yahoo.financials?.grossProfit || null,
         netIncome: kap.financials?.netIncome || yahoo.financials?.netIncome || null,
         profitability: kap.financials?.profitability || yahoo.financials?.profitability || null,
+        grossProfitMargin: null, // Hesaplanacak
         equity: kap.financials?.equity || yahoo.financials?.equity || null,
         currentAssets: kap.financials?.currentAssets || yahoo.financials?.currentAssets || null,
-        fixedAssets: kap.financials?.fixedAssets || null,
+        fixedAssets: kap.financials?.fixedAssets || null, // enrichData'da hesaplanacak
         totalAssets: kap.financials?.totalAssets || yahoo.financials?.totalAssets || null,
         shortTermLiabilities: kap.financials?.shortTermLiabilities || yahoo.financials?.shortTermLiabilities || null,
         longTermLiabilities: kap.financials?.longTermLiabilities || yahoo.financials?.longTermLiabilities || null,
@@ -133,6 +137,9 @@ class DataAggregatorService {
         investmentProperty: kap.financials?.investmentProperty || null,
         prepaidExpenses: kap.financials?.prepaidExpenses || null,
         deferredTax: kap.financials?.deferredTax || null,
+        totalDebt: null, // Hesaplanacak
+        netDebt: null, // Hesaplanacak
+        workingCapital: null, // Hesaplanacak
       },
 
       analysis: {
@@ -140,6 +147,19 @@ class DataAggregatorService {
         foreignSalesRatio: yahoo.analysis?.foreignSalesRatio || null,
         exportRatio: yahoo.analysis?.exportRatio || null,
         averageDividend: yahoo.analysis?.averageDividend || null,
+      },
+
+      liquidity: {
+        currentRatio: null, // Hesaplanacak
+        acidTestRatio: null, // Hesaplanacak
+        cashRatio: null, // Hesaplanacak
+      },
+
+      leverage: {
+        debtToEquity: null, // Hesaplanacak
+        debtToAssets: null, // Hesaplanacak
+        shortTermDebtRatio: null, // Hesaplanacak
+        longTermDebtRatio: null, // Hesaplanacak
       },
 
       lastUpdated: new Date(),
@@ -150,6 +170,7 @@ class DataAggregatorService {
    * Verilere ek hesaplamalar ve analizler ekler
    */
   private enrichData(data: StockData): void {
+    // ========== FİYAT VERİLERİ ==========
     // 52 hafta değişim hesapla
     if (data.priceData.week52Low && data.priceData.currentPrice) {
       data.priceData.week52Change =
@@ -162,19 +183,102 @@ class DataAggregatorService {
       data.priceData.dayAverage = (data.priceData.dayHigh + data.priceData.dayLow) / 2;
     }
 
+    // ========== İŞLEM VERİLERİ ==========
     // Hacim TL hesapla
     if (data.tradingData.volume && data.priceData.currentPrice) {
       data.tradingData.volumeTL = data.tradingData.volume * data.priceData.currentPrice;
     }
 
-    // Karlılık hesapla
+    // ========== FİNANSAL VERİLER ==========
+    // Net Karlılık (Net Kar Marjı) hesapla
     if (data.financials.netIncome && data.financials.revenue && data.financials.revenue !== 0) {
       data.financials.profitability = (data.financials.netIncome / data.financials.revenue) * 100;
+    }
+
+    // Brüt Kar Marjı hesapla
+    if (data.financials.grossProfit && data.financials.revenue && data.financials.revenue !== 0) {
+      data.financials.grossProfitMargin = (data.financials.grossProfit / data.financials.revenue) * 100;
     }
 
     // Duran varlıklar hesapla (toplam - dönen)
     if (data.financials.totalAssets && data.financials.currentAssets) {
       data.financials.fixedAssets = data.financials.totalAssets - data.financials.currentAssets;
+    }
+
+    // Toplam Borç hesapla
+    const shortTermLiabilities = data.financials.shortTermLiabilities || 0;
+    const longTermLiabilities = data.financials.longTermLiabilities || 0;
+    if (shortTermLiabilities > 0 || longTermLiabilities > 0) {
+      data.financials.totalDebt = shortTermLiabilities + longTermLiabilities;
+    }
+
+    // Net Borç hesapla (Borç - Nakit/Finansal Yatırımlar)
+    if (data.financials.totalDebt && data.financials.financialInvestments) {
+      data.financials.netDebt = data.financials.totalDebt - data.financials.financialInvestments;
+    } else if (data.financials.totalDebt) {
+      data.financials.netDebt = data.financials.totalDebt;
+    }
+
+    // İşletme Sermayesi hesapla (Dönen Varlıklar - Kısa Vadeli Borçlar)
+    if (data.financials.currentAssets && data.financials.shortTermLiabilities) {
+      data.financials.workingCapital = data.financials.currentAssets - data.financials.shortTermLiabilities;
+    }
+
+    // ========== TEMEL GÖSTERGELER ==========
+    // EPS (Hisse Başına Kazanç) hesapla
+    if (data.financials.netIncome && data.fundamentals.shares && data.fundamentals.shares > 0) {
+      data.fundamentals.eps = data.financials.netIncome / data.fundamentals.shares;
+    }
+
+    // ROE (Öz Sermaye Karlılığı) hesapla
+    if (data.financials.netIncome && data.financials.equity && data.financials.equity !== 0) {
+      data.fundamentals.roe = (data.financials.netIncome / data.financials.equity) * 100;
+    }
+
+    // ROA (Varlık Karlılığı) hesapla
+    if (data.financials.netIncome && data.financials.totalAssets && data.financials.totalAssets !== 0) {
+      data.fundamentals.roa = (data.financials.netIncome / data.financials.totalAssets) * 100;
+    }
+
+    // ========== LİKİDİTE ORANLARI ==========
+    // Cari Oran hesapla
+    if (data.financials.currentAssets && data.financials.shortTermLiabilities && data.financials.shortTermLiabilities !== 0) {
+      data.liquidity.currentRatio = data.financials.currentAssets / data.financials.shortTermLiabilities;
+    }
+
+    // Asit-Test Oranı hesapla (Dönen Varlıklar - Stoklar) / Kısa Vadeli Borçlar
+    // Not: Stok verisi yok, basitleştirilmiş hesaplama
+    if (data.financials.currentAssets && data.financials.shortTermLiabilities && data.financials.shortTermLiabilities !== 0) {
+      const liquidAssets = (data.financials.tradeReceivables || 0) + (data.financials.financialInvestments || 0);
+      if (liquidAssets > 0) {
+        data.liquidity.acidTestRatio = liquidAssets / data.financials.shortTermLiabilities;
+      }
+    }
+
+    // Nakit Oranı hesapla
+    if (data.financials.financialInvestments && data.financials.shortTermLiabilities && data.financials.shortTermLiabilities !== 0) {
+      data.liquidity.cashRatio = data.financials.financialInvestments / data.financials.shortTermLiabilities;
+    }
+
+    // ========== BORÇLULUK ORANLARI ==========
+    // Borç/Öz Sermaye hesapla
+    if (data.financials.totalDebt && data.financials.equity && data.financials.equity !== 0) {
+      data.leverage.debtToEquity = data.financials.totalDebt / data.financials.equity;
+    }
+
+    // Borç/Varlıklar hesapla
+    if (data.financials.totalDebt && data.financials.totalAssets && data.financials.totalAssets !== 0) {
+      data.leverage.debtToAssets = data.financials.totalDebt / data.financials.totalAssets;
+    }
+
+    // Kısa Vadeli Borç Oranı hesapla
+    if (data.financials.totalDebt && data.financials.totalDebt !== 0 && data.financials.shortTermLiabilities) {
+      data.leverage.shortTermDebtRatio = (data.financials.shortTermLiabilities / data.financials.totalDebt) * 100;
+    }
+
+    // Uzun Vadeli Borç Oranı hesapla
+    if (data.financials.totalDebt && data.financials.totalDebt !== 0 && data.financials.longTermLiabilities) {
+      data.leverage.longTermDebtRatio = (data.financials.longTermLiabilities / data.financials.totalDebt) * 100;
     }
   }
 
