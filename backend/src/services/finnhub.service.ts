@@ -93,7 +93,7 @@ class FinnhubService {
 
   async healthCheck(): Promise<{ status: boolean; responseTime: number; error?: string }> {
     if (!this.enabled) {
-      return { status: false, responseTime: 0, error: 'API key not configured' };
+      return { status: true, responseTime: 0, error: 'API key not configured (optional)' };
     }
 
     const startTime = Date.now();
