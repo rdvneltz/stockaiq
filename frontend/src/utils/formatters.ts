@@ -118,3 +118,30 @@ export const getHealthEmoji = (status: string): string => {
       return '⚪';
   }
 };
+
+/**
+ * Tarih farkını "X dakika/saat/gün önce" formatında gösterir
+ */
+export const formatTimeAgo = (date: Date | string | null): string => {
+  if (!date) return '-';
+
+  const d = typeof date === 'string' ? new Date(date) : date;
+  const now = new Date();
+  const diffMs = now.getTime() - d.getTime();
+  const diffSeconds = Math.floor(diffMs / 1000);
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  const diffHours = Math.floor(diffMinutes / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffSeconds < 60) {
+    return 'Az önce';
+  } else if (diffMinutes < 60) {
+    return `${diffMinutes} dk önce`;
+  } else if (diffHours < 24) {
+    return `${diffHours} sa önce`;
+  } else if (diffDays < 7) {
+    return `${diffDays} gün önce`;
+  } else {
+    return formatDate(d);
+  }
+};

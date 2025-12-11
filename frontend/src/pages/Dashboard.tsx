@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, TrendingUp, TrendingDown, RefreshCw, Star, Filter } from 'lucide-react';
+import { Plus, TrendingUp, TrendingDown, RefreshCw, Star, Filter, Clock } from 'lucide-react';
 import { stockApi } from '../services/api';
 import { StockData } from '../types';
-import { formatCurrency, formatPercent, getChangeColor } from '../utils/formatters';
+import { formatCurrency, formatPercent, getChangeColor, formatTimeAgo } from '../utils/formatters';
 import StockChart from '../components/StockChart';
 
 // Complete BIST100 list
@@ -402,16 +402,22 @@ const StockCard: React.FC<StockCardProps> = ({ stock, isFavorite, onToggleFavori
 
   return (
     <div className="stock-card" onClick={onClick}>
-      <button
-        className={`favorite-btn ${isFavorite ? 'active' : ''}`}
-        onClick={(e) => {
-          e.stopPropagation();
-          onToggleFavorite(stock.symbol);
-        }}
-        title={isFavorite ? 'Favorilerden çıkar' : 'Favorilere ekle'}
-      >
-        <Star size={18} fill={isFavorite ? '#fbbf24' : 'none'} stroke={isFavorite ? '#fbbf24' : '#fff'} />
-      </button>
+      <div className="card-top-bar">
+        <div className="last-updated" title={stock.lastUpdated ? new Date(stock.lastUpdated).toLocaleString('tr-TR') : '-'}>
+          <Clock size={12} />
+          <span>{formatTimeAgo(stock.lastUpdated)}</span>
+        </div>
+        <button
+          className={`favorite-btn ${isFavorite ? 'active' : ''}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleFavorite(stock.symbol);
+          }}
+          title={isFavorite ? 'Favorilerden çıkar' : 'Favorilere ekle'}
+        >
+          <Star size={18} fill={isFavorite ? '#fbbf24' : 'none'} stroke={isFavorite ? '#fbbf24' : '#fff'} />
+        </button>
+      </div>
 
       <div className="rating-badge" style={getRatingBadgeStyle(stock.smartAnalysis.rating)}>
         {stock.smartAnalysis.rating}
@@ -528,10 +534,34 @@ const StockCard: React.FC<StockCardProps> = ({ stock, isFavorite, onToggleFavori
           box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
         }
 
-        .favorite-btn {
+        .card-top-bar {
           position: absolute;
           top: 8px;
+          left: 8px;
           right: 8px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          z-index: 10;
+        }
+
+        .last-updated {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          font-size: 10px;
+          color: rgba(255, 255, 255, 0.5);
+          background: rgba(0, 0, 0, 0.3);
+          padding: 4px 8px;
+          border-radius: 12px;
+          backdrop-filter: blur(4px);
+        }
+
+        .last-updated span {
+          font-weight: 500;
+        }
+
+        .favorite-btn {
           background: rgba(0, 0, 0, 0.3);
           border: none;
           width: 32px;
@@ -662,6 +692,10 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, onClose }) =
           <div>
             <h2>{stock.symbol}</h2>
             <p>{stock.companyName}</p>
+            <div className="modal-last-updated">
+              <Clock size={12} />
+              <span>{formatTimeAgo(stock.lastUpdated)}</span>
+            </div>
           </div>
           <div className="modal-price">
             <div className="price">{formatCurrency(stock.currentPrice, 2)}</div>
@@ -1084,6 +1118,19 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, onClose }) =
           .modal-header p {
             font-size: 14px;
             opacity: 0.7;
+          }
+
+          .modal-last-updated {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: rgba(255, 255, 255, 0.5);
+            margin-top: 8px;
+          }
+
+          .modal-last-updated span {
+            font-weight: 500;
           }
 
           .modal-price .price {
