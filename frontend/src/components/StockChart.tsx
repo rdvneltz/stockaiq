@@ -127,7 +127,6 @@ const StockChart: React.FC<StockChartProps> = ({
     chartRef.current = chart;
 
     // Add candlestick series
-    // @ts-ignore - lightweight-charts v5 API
     const candlestickSeries = chart.addCandlestickSeries({
       upColor: '#10b981',
       downColor: '#ef4444',
@@ -145,7 +144,6 @@ const StockChart: React.FC<StockChartProps> = ({
     if (showBollinger) {
       const bollinger = calculateBollingerBands(historicalData);
 
-      // @ts-ignore - lightweight-charts v5 API
       const upperBand = chart.addLineSeries({
         color: 'rgba(102, 126, 234, 0.5)',
         lineWidth: 1,
@@ -154,7 +152,6 @@ const StockChart: React.FC<StockChartProps> = ({
       upperBand.setData(bollinger.upper);
       bollingerSeriesRef.current.upper = upperBand;
 
-      // @ts-ignore - lightweight-charts v5 API
       const middleBand = chart.addLineSeries({
         color: 'rgba(251, 191, 36, 0.8)',
         lineWidth: 2,
@@ -163,7 +160,6 @@ const StockChart: React.FC<StockChartProps> = ({
       middleBand.setData(bollinger.middle);
       bollingerSeriesRef.current.middle = middleBand;
 
-      // @ts-ignore - lightweight-charts v5 API
       const lowerBand = chart.addLineSeries({
         color: 'rgba(102, 126, 234, 0.5)',
         lineWidth: 1,
