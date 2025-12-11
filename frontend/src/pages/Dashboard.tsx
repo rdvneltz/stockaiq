@@ -1,30 +1,57 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, TrendingUp, TrendingDown, RefreshCw } from 'lucide-react';
+import { Plus, TrendingUp, TrendingDown, RefreshCw, Star, Filter } from 'lucide-react';
 import { stockApi } from '../services/api';
 import { StockData } from '../types';
 import { formatCurrency, formatPercent, getChangeColor } from '../utils/formatters';
+import StockChart from '../components/StockChart';
 
-// Default BIST hisseleri
-const DEFAULT_STOCKS = [
+// Complete BIST100 list
+const BIST100_STOCKS = [
   'THYAO', 'GARAN', 'AKBNK', 'EREGL', 'SAHOL', 'KCHOL', 'TUPRS', 'TCELL',
   'SISE', 'PETKM', 'VAKBN', 'YKBNK', 'HALKB', 'ASELS', 'BIMAS', 'ARCLK',
   'KOZAL', 'TAVHL', 'PGSUS', 'ENKAI', 'TOASO', 'KRDMD', 'VESTL', 'FROTO',
-  'ISCTR', 'EKGYO', 'KOZAA', 'TTKOM', 'DOHOL', 'SOKM'
+  'ISCTR', 'EKGYO', 'KOZAA', 'TTKOM', 'DOHOL', 'SOKM', 'SASA', 'PRKAB',
+  'GUBRF', 'TTRAK', 'GLYHO', 'KORDS', 'ENJSA', 'AEFES', 'OTKAR', 'BRYAT',
+  'AYGAZ', 'MGROS', 'ULKER', 'ISGYO', 'TSKB', 'ALGYO', 'CIMSA', 'DOAS',
+  'AKENR', 'HEKTS', 'LOGO', 'SKBNK', 'ALARK', 'CCOLA', 'TRKCM', 'KLMSN',
+  'SODA', 'EGEEN', 'GESAN', 'MAVI', 'MPARK', 'BUCIM', 'ISCTR', 'KARTN',
+  'IZMDC', 'KONTR', 'AKSA', 'MNDRS', 'GOODY', 'NETAS', 'ODAS', 'OYAKC',
+  'TRGYO', 'VERUS', 'AYDEM', 'CRFSA', 'KARSN', 'PENTA', 'AGHOL', 'TKFEN',
+  'ANACM', 'ANELE', 'BAGFS', 'BANVT', 'BFREN', 'BIOEN', 'BRSAN', 'BTCIM',
+  'CLEBI', 'CWENE', 'DEVA', 'DOAS', 'DURDO', 'ECILC', 'EMKEL', 'ENERY'
 ];
 
 const Dashboard: React.FC = () => {
   const [stocks, setStocks] = useState<StockData[]>([]);
-  const [watchlist, setWatchlist] = useState<string[]>(DEFAULT_STOCKS);
+  const [watchlist, setWatchlist] = useState<string[]>([]);
+  const [favorites, setFavorites] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedStock, setSelectedStock] = useState<StockData | null>(null);
   const [newSymbol, setNewSymbol] = useState('');
   const [addingStock, setAddingStock] = useState(false);
+  const [viewMode, setViewMode] = useState<'favorites' | 'all'>('favorites');
+  const [filterRating, setFilterRating] = useState<string>('all');
+
+  // Load favorites from localStorage on mount
+  useEffect(() => {
+    const savedFavorites = localStorage.getItem('stockaiq_favorites');
+    const initialFavorites = savedFavorites ? JSON.parse(savedFavorites) : ['THYAO', 'GARAN', 'AKBNK', 'EREGL', 'ASELS'];
+    setFavorites(initialFavorites);
+    setWatchlist(viewMode === 'favorites' ? initialFavorites : BIST100_STOCKS);
+  }, []);
+
+  // Update watchlist when view mode or favorites change
+  useEffect(() => {
+    setWatchlist(viewMode === 'favorites' ? favorites : BIST100_STOCKS);
+  }, [viewMode, favorites]);
 
   useEffect(() => {
-    loadStocks();
-    // Her 10 saniyede bir güncelle (anlık fiyatlar için)
-    const interval = setInterval(loadStocks, 10000);
-    return () => clearInterval(interval);
+    if (watchlist.length > 0) {
+      loadStocks();
+      // Her 10 saniyede bir güncelle (anlık fiyatlar için)
+      const interval = setInterval(loadStocks, 10000);
+      return () => clearInterval(interval);
+    }
   }, [watchlist]);
 
   const loadStocks = async () => {
@@ -40,12 +67,20 @@ const Dashboard: React.FC = () => {
   };
 
   const handleAddStock = async () => {
-    if (!newSymbol.trim() || watchlist.includes(newSymbol.toUpperCase())) return;
+    if (!newSymbol.trim()) return;
+
+    const symbolUpper = newSymbol.toUpperCase();
+    if (favorites.includes(symbolUpper)) {
+      alert('Bu hisse zaten favorilerde!');
+      return;
+    }
 
     setAddingStock(true);
     try {
-      await stockApi.getStock(newSymbol.toUpperCase());
-      setWatchlist([...watchlist, newSymbol.toUpperCase()]);
+      await stockApi.getStock(symbolUpper);
+      const newFavorites = [...favorites, symbolUpper];
+      setFavorites(newFavorites);
+      localStorage.setItem('stockaiq_favorites', JSON.stringify(newFavorites));
       setNewSymbol('');
     } catch (error) {
       alert('Hisse bulunamadı veya eklenemedi');
@@ -54,14 +89,23 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  const handleRemoveStock = (symbol: string) => {
-    setWatchlist(watchlist.filter(s => s !== symbol));
-    setStocks(stocks.filter(s => s.symbol !== symbol));
+  const toggleFavorite = (symbol: string) => {
+    const newFavorites = favorites.includes(symbol)
+      ? favorites.filter(s => s !== symbol)
+      : [...favorites, symbol];
+    setFavorites(newFavorites);
+    localStorage.setItem('stockaiq_favorites', JSON.stringify(newFavorites));
   };
 
   const handleRefresh = () => {
     loadStocks();
   };
+
+  // Filter stocks based on rating
+  const filteredStocks = stocks.filter(stock => {
+    if (filterRating === 'all') return true;
+    return stock.smartAnalysis.rating === filterRating;
+  });
 
   return (
     <div className="dashboard">
@@ -69,13 +113,43 @@ const Dashboard: React.FC = () => {
       <div className="header">
         <div className="title-section">
           <h1>📊 Piyasa Görünümü</h1>
-          <p>{stocks.length} hisse izleniyor</p>
+          <p>{filteredStocks.length} hisse görüntüleniyor</p>
         </div>
-        <div className="actions">
+        <div className="controls">
+          <div className="view-toggle">
+            <button
+              className={viewMode === 'favorites' ? 'active' : ''}
+              onClick={() => setViewMode('favorites')}
+            >
+              <Star size={16} />
+              Favoriler ({favorites.length})
+            </button>
+            <button
+              className={viewMode === 'all' ? 'active' : ''}
+              onClick={() => setViewMode('all')}
+            >
+              BIST100 ({BIST100_STOCKS.length})
+            </button>
+          </div>
+          <div className="filter-section">
+            <Filter size={16} />
+            <select
+              value={filterRating}
+              onChange={(e) => setFilterRating(e.target.value)}
+              className="filter-select"
+            >
+              <option value="all">Tüm Derecelendirmeler</option>
+              <option value="Strong Buy">Strong Buy</option>
+              <option value="Buy">Buy</option>
+              <option value="Hold">Hold</option>
+              <option value="Sell">Sell</option>
+              <option value="Strong Sell">Strong Sell</option>
+            </select>
+          </div>
           <div className="add-stock">
             <input
               type="text"
-              placeholder="Hisse ekle (örn: THYAO)"
+              placeholder="Favorilere ekle (örn: THYAO)"
               value={newSymbol}
               onChange={(e) => setNewSymbol(e.target.value.toUpperCase())}
               onKeyPress={(e) => e.key === 'Enter' && handleAddStock()}
@@ -96,11 +170,12 @@ const Dashboard: React.FC = () => {
         <div className="loading">Hisseler yükleniyor...</div>
       ) : (
         <div className="stock-grid">
-          {stocks.map((stock) => (
+          {filteredStocks.map((stock) => (
             <StockCard
               key={stock.symbol}
               stock={stock}
-              onRemove={handleRemoveStock}
+              isFavorite={favorites.includes(stock.symbol)}
+              onToggleFavorite={toggleFavorite}
               onClick={() => setSelectedStock(stock)}
             />
           ))}
@@ -142,9 +217,71 @@ const Dashboard: React.FC = () => {
           opacity: 0.7;
         }
 
-        .actions {
+        .controls {
           display: flex;
           gap: 12px;
+          flex-wrap: wrap;
+          align-items: center;
+        }
+
+        .view-toggle {
+          display: flex;
+          gap: 4px;
+          background: rgba(255, 255, 255, 0.05);
+          padding: 4px;
+          border-radius: 8px;
+        }
+
+        .view-toggle button {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          padding: 8px 16px;
+          background: transparent;
+          border: none;
+          color: rgba(255, 255, 255, 0.6);
+          border-radius: 6px;
+          font-size: 14px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .view-toggle button:hover {
+          color: rgba(255, 255, 255, 0.9);
+          background: rgba(255, 255, 255, 0.05);
+        }
+
+        .view-toggle button.active {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          color: #fff;
+        }
+
+        .filter-section {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          color: rgba(255, 255, 255, 0.7);
+        }
+
+        .filter-select {
+          padding: 8px 12px;
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 8px;
+          color: #fff;
+          font-size: 14px;
+          cursor: pointer;
+          outline: none;
+        }
+
+        .filter-select:focus {
+          border-color: #667eea;
+        }
+
+        .filter-select option {
+          background: #1a1f3a;
+          color: #fff;
         }
 
         .add-stock {
@@ -237,25 +374,48 @@ const Dashboard: React.FC = () => {
 // Stock Card Component
 interface StockCardProps {
   stock: StockData;
-  onRemove: (symbol: string) => void;
+  isFavorite: boolean;
+  onToggleFavorite: (symbol: string) => void;
   onClick: () => void;
 }
 
-const StockCard: React.FC<StockCardProps> = ({ stock, onRemove, onClick }) => {
+const StockCard: React.FC<StockCardProps> = ({ stock, isFavorite, onToggleFavorite, onClick }) => {
   const changeColor = getChangeColor(stock.tradingData.dailyChangePercent);
   const isPositive = (stock.tradingData.dailyChangePercent || 0) >= 0;
+
+  const getRatingBadgeStyle = (rating: string) => {
+    switch (rating) {
+      case 'Strong Buy':
+        return { background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', color: '#fff' };
+      case 'Buy':
+        return { background: 'linear-gradient(135deg, #34d399 0%, #10b981 100%)', color: '#fff' };
+      case 'Hold':
+        return { background: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)', color: '#000' };
+      case 'Sell':
+        return { background: 'linear-gradient(135deg, #f87171 0%, #ef4444 100%)', color: '#fff' };
+      case 'Strong Sell':
+        return { background: 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)', color: '#fff' };
+      default:
+        return { background: 'rgba(255, 255, 255, 0.1)', color: '#fff' };
+    }
+  };
 
   return (
     <div className="stock-card" onClick={onClick}>
       <button
-        className="remove-btn"
+        className={`favorite-btn ${isFavorite ? 'active' : ''}`}
         onClick={(e) => {
           e.stopPropagation();
-          onRemove(stock.symbol);
+          onToggleFavorite(stock.symbol);
         }}
+        title={isFavorite ? 'Favorilerden çıkar' : 'Favorilere ekle'}
       >
-        ×
+        <Star size={18} fill={isFavorite ? '#fbbf24' : 'none'} stroke={isFavorite ? '#fbbf24' : '#fff'} />
       </button>
+
+      <div className="rating-badge" style={getRatingBadgeStyle(stock.smartAnalysis.rating)}>
+        {stock.smartAnalysis.rating}
+      </div>
 
       <div className="card-header">
         <h3>{stock.symbol}</h3>
@@ -368,29 +528,47 @@ const StockCard: React.FC<StockCardProps> = ({ stock, onRemove, onClick }) => {
           box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
         }
 
-        .remove-btn {
+        .favorite-btn {
           position: absolute;
           top: 8px;
           right: 8px;
-          background: rgba(239, 68, 68, 0.2);
+          background: rgba(0, 0, 0, 0.3);
           border: none;
-          color: #ef4444;
-          width: 24px;
-          height: 24px;
+          width: 32px;
+          height: 32px;
           border-radius: 50%;
           cursor: pointer;
-          font-size: 18px;
-          line-height: 1;
-          opacity: 0;
-          transition: opacity 0.2s;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s;
+          opacity: 0.6;
         }
 
-        .stock-card:hover .remove-btn {
+        .stock-card:hover .favorite-btn {
           opacity: 1;
         }
 
-        .remove-btn:hover {
-          background: rgba(239, 68, 68, 0.4);
+        .favorite-btn:hover {
+          background: rgba(0, 0, 0, 0.5);
+          transform: scale(1.1);
+        }
+
+        .favorite-btn.active {
+          opacity: 1;
+        }
+
+        .rating-badge {
+          position: absolute;
+          top: 8px;
+          left: 8px;
+          padding: 4px 10px;
+          border-radius: 12px;
+          font-size: 11px;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
         }
 
         .card-header {
@@ -465,7 +643,7 @@ interface StockDetailModalProps {
 }
 
 const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, onClose }) => {
-  const [activeTab, setActiveTab] = React.useState<'overview' | 'balance' | 'profitability' | 'valuation' | 'technical'>('overview');
+  const [activeTab, setActiveTab] = React.useState<'overview' | 'balance' | 'profitability' | 'valuation' | 'technical' | 'smartAnalysis'>('overview');
 
   // Modal açıldığında body scroll'ü kapat
   React.useEffect(() => {
@@ -503,6 +681,12 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, onClose }) =
             onClick={() => setActiveTab('overview')}
           >
             📊 Özet
+          </button>
+          <button
+            className={`tab ${activeTab === 'smartAnalysis' ? 'active' : ''}`}
+            onClick={() => setActiveTab('smartAnalysis')}
+          >
+            🤖 Akıllı Analiz
           </button>
           <button
             className={`tab ${activeTab === 'balance' ? 'active' : ''}`}
@@ -567,6 +751,102 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, onClose }) =
                   <DetailRow label="Hisse Sayısı" value={stock.fundamentals.shares?.toLocaleString('tr-TR') || '-'} />
                 </div>
               </div>
+            </>
+          )}
+
+          {activeTab === 'smartAnalysis' && (
+            <>
+              <div className="detail-section">
+                <h3>🎯 Genel Değerlendirme</h3>
+                <div className="smart-overview">
+                  <div className="score-circle">
+                    <svg viewBox="0 0 120 120" className="score-svg">
+                      <circle cx="60" cy="60" r="50" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="10" />
+                      <circle
+                        cx="60"
+                        cy="60"
+                        r="50"
+                        fill="none"
+                        stroke={stock.smartAnalysis.overallScore >= 70 ? '#10b981' : stock.smartAnalysis.overallScore >= 50 ? '#fbbf24' : '#ef4444'}
+                        strokeWidth="10"
+                        strokeDasharray={`${(stock.smartAnalysis.overallScore / 100) * 314} 314`}
+                        strokeLinecap="round"
+                        transform="rotate(-90 60 60)"
+                      />
+                    </svg>
+                    <div className="score-text">
+                      <div className="score-number">{stock.smartAnalysis.overallScore}</div>
+                      <div className="score-label">Puan</div>
+                    </div>
+                  </div>
+                  <div className="rating-box">
+                    <div className="rating-label">Derecelendirme</div>
+                    <div
+                      className="rating-value"
+                      style={{
+                        color: stock.smartAnalysis.rating.includes('Buy') ? '#10b981' :
+                               stock.smartAnalysis.rating === 'Hold' ? '#fbbf24' : '#ef4444'
+                      }}
+                    >
+                      {stock.smartAnalysis.rating}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="detail-section">
+                <h3>📊 Detaylı Skorlar</h3>
+                <div className="scores-grid">
+                  <ScoreBar label="Değerleme" score={stock.smartAnalysis.valuationScore} />
+                  <ScoreBar label="Karlılık" score={stock.smartAnalysis.profitabilityScore} />
+                  <ScoreBar label="Likidite" score={stock.smartAnalysis.liquidityScore} />
+                  <ScoreBar label="Borçluluk" score={stock.smartAnalysis.leverageScore} />
+                </div>
+              </div>
+
+              {stock.smartAnalysis.strengths.length > 0 && (
+                <div className="detail-section">
+                  <h3>✅ Güçlü Yönler</h3>
+                  <div className="insights-list">
+                    {stock.smartAnalysis.strengths.map((item, idx) => (
+                      <div key={idx} className="insight-item strength">{item}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {stock.smartAnalysis.weaknesses.length > 0 && (
+                <div className="detail-section">
+                  <h3>⚠️ Zayıf Yönler</h3>
+                  <div className="insights-list">
+                    {stock.smartAnalysis.weaknesses.map((item, idx) => (
+                      <div key={idx} className="insight-item weakness">{item}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {stock.smartAnalysis.warnings.length > 0 && (
+                <div className="detail-section">
+                  <h3>🚨 Uyarılar</h3>
+                  <div className="insights-list">
+                    {stock.smartAnalysis.warnings.map((item, idx) => (
+                      <div key={idx} className="insight-item warning">{item}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {stock.smartAnalysis.recommendations.length > 0 && (
+                <div className="detail-section">
+                  <h3>💡 Öneriler</h3>
+                  <div className="insights-list">
+                    {stock.smartAnalysis.recommendations.map((item, idx) => (
+                      <div key={idx} className="insight-item recommendation">{item}</div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </>
           )}
 
@@ -682,6 +962,18 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, onClose }) =
 
           {activeTab === 'technical' && (
             <>
+              <div className="detail-section">
+                <h3>📊 Fiyat Grafiği & Teknik İndikatörler</h3>
+                <StockChart
+                  symbol={stock.symbol}
+                  currentPrice={stock.currentPrice || 0}
+                  dayHigh={stock.priceData.dayHigh}
+                  dayLow={stock.priceData.dayLow}
+                  week52High={stock.priceData.week52High}
+                  week52Low={stock.priceData.week52Low}
+                />
+              </div>
+
               <div className="detail-section">
                 <h3>📉 Fiyat Performansı</h3>
                 <div className="detail-grid">
@@ -930,5 +1222,160 @@ const DetailRow: React.FC<{ label: string; value: string; bold?: boolean }> = ({
     `}</style>
   </div>
 );
+
+const ScoreBar: React.FC<{ label: string; score: number }> = ({ label, score }) => {
+  const getScoreColor = (score: number) => {
+    if (score >= 70) return '#10b981';
+    if (score >= 50) return '#fbbf24';
+    return '#ef4444';
+  };
+
+  return (
+    <div className="score-bar-container">
+      <div className="score-bar-header">
+        <span className="score-bar-label">{label}</span>
+        <span className="score-bar-value">{score}/100</span>
+      </div>
+      <div className="score-bar-track">
+        <div
+          className="score-bar-fill"
+          style={{
+            width: `${score}%`,
+            background: getScoreColor(score)
+          }}
+        />
+      </div>
+      <style>{`
+        .score-bar-container {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .score-bar-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+
+        .score-bar-label {
+          font-size: 13px;
+          opacity: 0.8;
+        }
+
+        .score-bar-value {
+          font-size: 14px;
+          font-weight: 700;
+        }
+
+        .score-bar-track {
+          height: 8px;
+          background: rgba(255, 255, 255, 0.1);
+          border-radius: 4px;
+          overflow: hidden;
+        }
+
+        .score-bar-fill {
+          height: 100%;
+          border-radius: 4px;
+          transition: width 0.3s ease;
+        }
+
+        .smart-overview {
+          display: flex;
+          gap: 32px;
+          align-items: center;
+          justify-content: center;
+          padding: 24px;
+          background: rgba(255, 255, 255, 0.03);
+          border-radius: 12px;
+        }
+
+        .score-circle {
+          position: relative;
+          width: 120px;
+          height: 120px;
+        }
+
+        .score-svg {
+          width: 100%;
+          height: 100%;
+        }
+
+        .score-text {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          text-align: center;
+        }
+
+        .score-number {
+          font-size: 32px;
+          font-weight: 700;
+        }
+
+        .score-label {
+          font-size: 12px;
+          opacity: 0.7;
+        }
+
+        .rating-box {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .rating-label {
+          font-size: 14px;
+          opacity: 0.7;
+        }
+
+        .rating-value {
+          font-size: 28px;
+          font-weight: 700;
+        }
+
+        .scores-grid {
+          display: grid;
+          gap: 20px;
+        }
+
+        .insights-list {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .insight-item {
+          padding: 12px 16px;
+          border-radius: 8px;
+          font-size: 14px;
+          line-height: 1.5;
+        }
+
+        .insight-item.strength {
+          background: rgba(16, 185, 129, 0.15);
+          border-left: 3px solid #10b981;
+        }
+
+        .insight-item.weakness {
+          background: rgba(251, 191, 36, 0.15);
+          border-left: 3px solid #fbbf24;
+        }
+
+        .insight-item.warning {
+          background: rgba(239, 68, 68, 0.15);
+          border-left: 3px solid #ef4444;
+        }
+
+        .insight-item.recommendation {
+          background: rgba(102, 126, 234, 0.15);
+          border-left: 3px solid #667eea;
+        }
+      `}</style>
+    </div>
+  );
+};
 
 export default Dashboard;
