@@ -73,6 +73,9 @@ class YahooFinanceService {
           pdEBITDA: quoteSummary?.enterpriseToEbitda || null,
           shares: quoteSummary?.sharesOutstanding || null,
           paidCapital: null,
+          eps: null,
+          roe: null,
+          roa: null,
         },
 
         financials: {
@@ -86,7 +89,7 @@ class YahooFinanceService {
           fixedAssets: null,
           totalAssets: quoteSummary?.totalAssets || null,
           shortTermLiabilities: quoteSummary?.totalCurrentLiabilities || null,
-          longTermLiabilities: quoteSummary?.longTermDebt || null,
+          longTermLiabilities: null, // Yahoo Finance'de bu alan yok
           shortTermBankLoans: null,
           longTermBankLoans: null,
           tradeReceivables: null,
@@ -94,6 +97,10 @@ class YahooFinanceService {
           investmentProperty: null,
           prepaidExpenses: null,
           deferredTax: null,
+          totalDebt: null,
+          netDebt: null,
+          workingCapital: null,
+          grossProfitMargin: null,
         },
 
         analysis: {

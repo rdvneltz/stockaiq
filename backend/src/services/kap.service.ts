@@ -95,6 +95,7 @@ class KAPService {
           period: this.extractValue($, 'Dönem'),
           revenue: this.parseNumber(this.extractValue($, 'Hasılat')),
           grossProfit: this.parseNumber(this.extractValue($, 'Brüt Kar')),
+          grossProfitMargin: null,
           netIncome: this.parseNumber(this.extractValue($, 'Net Kar')),
           profitability: this.parseNumber(this.extractValue($, 'Karlılık')),
           equity: this.parseNumber(this.extractValue($, 'Öz Sermaye')),
@@ -110,6 +111,9 @@ class KAPService {
           investmentProperty: this.parseNumber(this.extractValue($, 'Yatırım Amaçlı Gayrimenkuller')),
           prepaidExpenses: this.parseNumber(this.extractValue($, 'Peşin Ödenmiş Giderler')),
           deferredTax: this.parseNumber(this.extractValue($, 'Ertelenmiş Vergi')),
+          totalDebt: null,
+          netDebt: null,
+          workingCapital: null,
         },
 
         fundamentals: {
@@ -120,6 +124,9 @@ class KAPService {
           pdEBITDA: null,
           shares: this.parseNumber(this.extractValue($, 'İhraç Edilen Hisse Sayısı')),
           paidCapital: this.parseNumber(this.extractValue($, 'Ödenmiş Sermaye')),
+          eps: null,
+          roe: null,
+          roa: null,
         },
 
         lastUpdated: new Date(),
@@ -190,6 +197,10 @@ class KAPService {
         investmentProperty: null,
         prepaidExpenses: null,
         deferredTax: null,
+        totalDebt: null,
+        netDebt: null,
+        workingCapital: null,
+        grossProfitMargin: null,
       },
       lastUpdated: new Date(),
     };

@@ -114,6 +114,9 @@ class InvestingService {
           pdEBITDA: null,
           shares: null,
           paidCapital: null,
+          eps: null,
+          roe: null,
+          roa: null,
         },
 
         lastUpdated: new Date(),

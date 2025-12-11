@@ -4,38 +4,58 @@ import investingService from './investing.service';
 import twelveDataService from './twelveData.service';
 import finnhubService from './finnhub.service';
 import fmpService from './fmp.service';
+import stockDbService from './stockDb.service';
+import { DataCategory } from '../models/Stock.model';
 import cache from '../utils/cache';
 import logger from '../utils/logger';
 import { StockData } from '../types';
 
 class DataAggregatorService {
   /**
-   * Tüm kaynaklardan veri çeker ve birleştirir
+   * Tüm kaynaklardan veri çeker ve birleştirir (MongoDB-first yaklaşımı)
    */
   async getCompleteStockData(symbol: string): Promise<StockData> {
     const cacheKey = `stock:${symbol.toUpperCase()}`;
 
-    // Önce cache'e bak
+    // Önce in-memory cache'e bak (10 saniye)
     const cached = cache.get<StockData>(cacheKey);
     if (cached) {
-      logger.info(`Returning cached data for ${symbol}`);
+      logger.debug(`Returning in-memory cached data for ${symbol}`);
       return cached;
     }
 
-    logger.info(`Aggregating data from all sources for ${symbol}`);
+    logger.info(`Fetching data for ${symbol}`);
 
     try {
-      // Multi-source fallback: Tüm kaynaklardan paralel veri çek
+      // 1. MongoDB'den veriyi al
+      const dbData = await stockDbService.getStock(symbol);
+
+      // 2. Hangi kategorilerin güncellenmesi gerektiğini belirle
+      const needsRealtimeUpdate = !dbData || !dbData.currentPrice;
+      const needsDailyUpdate = !dbData || !dbData.fundamentals?.marketCap;
+      const needsQuarterlyUpdate = !dbData || !dbData.financials?.revenue;
+      const needsStaticUpdate = !dbData || !dbData.companyName;
+
+      // 3. Eğer tüm veriler güncel ise, direkt dön
+      if (dbData && !needsRealtimeUpdate && !needsDailyUpdate && !needsQuarterlyUpdate && !needsStaticUpdate) {
+        logger.info(`All data is fresh for ${symbol}, returning from DB`);
+        cache.set(cacheKey, dbData);
+        return dbData;
+      }
+
+      // 4. Sadece gerekli kategoriler için API çağrısı yap
+      logger.info(`Fetching updates for ${symbol}: RT=${needsRealtimeUpdate}, Daily=${needsDailyUpdate}, Quarterly=${needsQuarterlyUpdate}`);
+
       const [yahooData, twelveData, finnhubData, fmpData, kapData, investingData] = await Promise.allSettled([
         yahooFinanceService.getStockData(symbol),
         twelveDataService.getStockData(symbol),
         finnhubService.getStockData(symbol),
-        fmpService.getFinancialStatements(symbol),
-        kapService.getFinancialData(symbol),
+        needsQuarterlyUpdate ? fmpService.getFinancialStatements(symbol) : Promise.resolve({}),
+        needsQuarterlyUpdate ? kapService.getFinancialData(symbol) : Promise.resolve({}),
         investingService.getStockData(symbol),
       ]);
 
-      // Veri birleştir - öncelik sırası: Twelve Data > Finnhub > FMP > Yahoo > Investing > KAP
+      // 5. Veri birleştir
       const aggregatedData = this.mergeData(
         symbol,
         this.getResultValue(yahooData),
@@ -43,16 +63,25 @@ class DataAggregatorService {
         this.getResultValue(finnhubData),
         this.getResultValue(fmpData),
         this.getResultValue(kapData),
-        this.getResultValue(investingData)
+        this.getResultValue(investingData),
+        dbData // DB'den gelen eski veriyi de birleştir
       );
 
-      // Ek hesaplamalar yap
+      // 6. Ek hesaplamalar yap
       this.enrichData(aggregatedData);
 
-      // Akıllı analiz yap
+      // 7. Akıllı analiz yap
       this.performSmartAnalysis(aggregatedData);
 
-      // Cache'e kaydet
+      // 8. MongoDB'ye kaydet (hangi kategoriler güncellendi?)
+      await stockDbService.saveStock(aggregatedData, {
+        realtime: needsRealtimeUpdate,
+        daily: needsDailyUpdate,
+        quarterly: needsQuarterlyUpdate,
+        static: needsStaticUpdate,
+      });
+
+      // 9. In-memory cache'e kaydet
       cache.set(cacheKey, aggregatedData);
 
       logger.info(`Data aggregation completed for ${symbol}`);
@@ -86,98 +115,99 @@ class DataAggregatorService {
     finnhub: Partial<StockData>,
     fmp: Partial<StockData>,
     kap: Partial<StockData>,
-    investing: Partial<StockData>
+    investing: Partial<StockData>,
+    db: Partial<StockData> | null = null
   ): StockData {
     return {
       symbol: symbol.toUpperCase(),
-      companyName: twelve.companyName || finnhub.companyName || yahoo.companyName || investing.companyName || symbol,
-      currentPrice: twelve.currentPrice || finnhub.currentPrice || yahoo.currentPrice || investing.priceData?.currentPrice || null,
+      companyName: twelve.companyName || finnhub.companyName || yahoo.companyName || investing.companyName || db?.companyName || symbol,
+      currentPrice: twelve.currentPrice || finnhub.currentPrice || yahoo.currentPrice || investing.priceData?.currentPrice || db?.currentPrice || null,
 
       priceData: {
-        currentPrice: twelve.priceData?.currentPrice || finnhub.priceData?.currentPrice || yahoo.priceData?.currentPrice || investing.priceData?.currentPrice || null,
-        dayHigh: investing.priceData?.dayHigh || yahoo.priceData?.dayHigh || null,
-        dayLow: investing.priceData?.dayLow || yahoo.priceData?.dayLow || null,
-        dayAverage: investing.priceData?.dayAverage || yahoo.priceData?.dayAverage || null,
-        week1High: investing.priceData?.week1High || yahoo.priceData?.week1High || null,
-        week1Low: investing.priceData?.week1Low || yahoo.priceData?.week1Low || null,
-        day30High: investing.priceData?.day30High || yahoo.priceData?.day30High || null,
-        day30Low: investing.priceData?.day30Low || yahoo.priceData?.day30Low || null,
-        week52High: investing.priceData?.week52High || yahoo.priceData?.week52High || null,
-        week52Low: investing.priceData?.week52Low || yahoo.priceData?.week52Low || null,
-        week52Change: investing.priceData?.week52Change || yahoo.priceData?.week52Change || null,
-        week52ChangeTL: investing.priceData?.week52ChangeTL || yahoo.priceData?.week52ChangeTL || null,
+        currentPrice: twelve.priceData?.currentPrice || finnhub.priceData?.currentPrice || yahoo.priceData?.currentPrice || investing.priceData?.currentPrice || db?.priceData?.currentPrice || null,
+        dayHigh: investing.priceData?.dayHigh || yahoo.priceData?.dayHigh || db?.priceData?.dayHigh || null,
+        dayLow: investing.priceData?.dayLow || yahoo.priceData?.dayLow || db?.priceData?.dayLow || null,
+        dayAverage: investing.priceData?.dayAverage || yahoo.priceData?.dayAverage || db?.priceData?.dayAverage || null,
+        week1High: investing.priceData?.week1High || yahoo.priceData?.week1High || db?.priceData?.week1High || null,
+        week1Low: investing.priceData?.week1Low || yahoo.priceData?.week1Low || db?.priceData?.week1Low || null,
+        day30High: investing.priceData?.day30High || yahoo.priceData?.day30High || db?.priceData?.day30High || null,
+        day30Low: investing.priceData?.day30Low || yahoo.priceData?.day30Low || db?.priceData?.day30Low || null,
+        week52High: investing.priceData?.week52High || yahoo.priceData?.week52High || db?.priceData?.week52High || null,
+        week52Low: investing.priceData?.week52Low || yahoo.priceData?.week52Low || db?.priceData?.week52Low || null,
+        week52Change: investing.priceData?.week52Change || yahoo.priceData?.week52Change || db?.priceData?.week52Change || null,
+        week52ChangeTL: investing.priceData?.week52ChangeTL || yahoo.priceData?.week52ChangeTL || db?.priceData?.week52ChangeTL || null,
       },
 
       tradingData: {
-        bid: investing.tradingData?.bid || yahoo.tradingData?.bid || null,
-        ask: investing.tradingData?.ask || yahoo.tradingData?.ask || null,
-        volume: investing.tradingData?.volume || yahoo.tradingData?.volume || null,
-        volumeTL: investing.tradingData?.volumeTL || yahoo.tradingData?.volumeTL || null,
-        lotSize: investing.tradingData?.lotSize || yahoo.tradingData?.lotSize || null,
-        dailyChange: investing.tradingData?.dailyChange || yahoo.tradingData?.dailyChange || null,
-        dailyChangePercent: investing.tradingData?.dailyChangePercent || yahoo.tradingData?.dailyChangePercent || null,
-        dailyOpen: investing.tradingData?.dailyOpen || yahoo.tradingData?.dailyOpen || null,
+        bid: investing.tradingData?.bid || yahoo.tradingData?.bid || db?.tradingData?.bid || null,
+        ask: investing.tradingData?.ask || yahoo.tradingData?.ask || db?.tradingData?.ask || null,
+        volume: investing.tradingData?.volume || yahoo.tradingData?.volume || db?.tradingData?.volume || null,
+        volumeTL: investing.tradingData?.volumeTL || yahoo.tradingData?.volumeTL || db?.tradingData?.volumeTL || null,
+        lotSize: investing.tradingData?.lotSize || yahoo.tradingData?.lotSize || db?.tradingData?.lotSize || null,
+        dailyChange: investing.tradingData?.dailyChange || yahoo.tradingData?.dailyChange || db?.tradingData?.dailyChange || null,
+        dailyChangePercent: investing.tradingData?.dailyChangePercent || yahoo.tradingData?.dailyChangePercent || db?.tradingData?.dailyChangePercent || null,
+        dailyOpen: investing.tradingData?.dailyOpen || yahoo.tradingData?.dailyOpen || db?.tradingData?.dailyOpen || null,
       },
 
       fundamentals: {
-        marketCap: twelve.fundamentals?.marketCap || finnhub.fundamentals?.marketCap || fmp.fundamentals?.marketCap || yahoo.fundamentals?.marketCap || investing.fundamentals?.marketCap || null,
-        pdDD: twelve.fundamentals?.pdDD || finnhub.fundamentals?.pdDD || fmp.fundamentals?.pdDD || yahoo.fundamentals?.pdDD || investing.fundamentals?.pdDD || null,
-        fk: twelve.fundamentals?.fk || finnhub.fundamentals?.fk || fmp.fundamentals?.fk || yahoo.fundamentals?.fk || investing.fundamentals?.fk || null,
-        fdFAVO: yahoo.fundamentals?.fdFAVO || null,
-        pdEBITDA: yahoo.fundamentals?.pdEBITDA || null,
-        shares: twelve.fundamentals?.shares || finnhub.fundamentals?.shares || fmp.fundamentals?.shares || yahoo.fundamentals?.shares || kap.fundamentals?.shares || null,
-        paidCapital: fmp.fundamentals?.paidCapital || kap.fundamentals?.paidCapital || null,
-        eps: twelve.fundamentals?.eps || finnhub.fundamentals?.eps || fmp.fundamentals?.eps || null,
-        roe: finnhub.fundamentals?.roe || fmp.fundamentals?.roe || null,
-        roa: finnhub.fundamentals?.roa || fmp.fundamentals?.roa || null,
+        marketCap: twelve.fundamentals?.marketCap || finnhub.fundamentals?.marketCap || fmp.fundamentals?.marketCap || yahoo.fundamentals?.marketCap || investing.fundamentals?.marketCap || db?.fundamentals?.marketCap || null,
+        pdDD: twelve.fundamentals?.pdDD || finnhub.fundamentals?.pdDD || fmp.fundamentals?.pdDD || yahoo.fundamentals?.pdDD || investing.fundamentals?.pdDD || db?.fundamentals?.pdDD || null,
+        fk: twelve.fundamentals?.fk || finnhub.fundamentals?.fk || fmp.fundamentals?.fk || yahoo.fundamentals?.fk || investing.fundamentals?.fk || db?.fundamentals?.fk || null,
+        fdFAVO: yahoo.fundamentals?.fdFAVO || db?.fundamentals?.fdFAVO || null,
+        pdEBITDA: yahoo.fundamentals?.pdEBITDA || db?.fundamentals?.pdEBITDA || null,
+        shares: twelve.fundamentals?.shares || finnhub.fundamentals?.shares || fmp.fundamentals?.shares || yahoo.fundamentals?.shares || kap.fundamentals?.shares || db?.fundamentals?.shares || null,
+        paidCapital: fmp.fundamentals?.paidCapital || kap.fundamentals?.paidCapital || db?.fundamentals?.paidCapital || null,
+        eps: twelve.fundamentals?.eps || finnhub.fundamentals?.eps || fmp.fundamentals?.eps || db?.fundamentals?.eps || null,
+        roe: finnhub.fundamentals?.roe || fmp.fundamentals?.roe || db?.fundamentals?.roe || null,
+        roa: finnhub.fundamentals?.roa || fmp.fundamentals?.roa || db?.fundamentals?.roa || null,
       },
 
       financials: {
-        period: fmp.financials?.period || kap.financials?.period || yahoo.financials?.period || null,
-        revenue: fmp.financials?.revenue || kap.financials?.revenue || yahoo.financials?.revenue || null,
-        grossProfit: fmp.financials?.grossProfit || kap.financials?.grossProfit || yahoo.financials?.grossProfit || null,
-        netIncome: fmp.financials?.netIncome || kap.financials?.netIncome || yahoo.financials?.netIncome || null,
-        profitability: kap.financials?.profitability || yahoo.financials?.profitability || null,
-        grossProfitMargin: null, // Hesaplanacak
-        equity: kap.financials?.equity || yahoo.financials?.equity || null,
-        currentAssets: kap.financials?.currentAssets || yahoo.financials?.currentAssets || null,
-        fixedAssets: kap.financials?.fixedAssets || null, // enrichData'da hesaplanacak
-        totalAssets: kap.financials?.totalAssets || yahoo.financials?.totalAssets || null,
-        shortTermLiabilities: kap.financials?.shortTermLiabilities || yahoo.financials?.shortTermLiabilities || null,
-        longTermLiabilities: kap.financials?.longTermLiabilities || yahoo.financials?.longTermLiabilities || null,
-        shortTermBankLoans: kap.financials?.shortTermBankLoans || null,
-        longTermBankLoans: kap.financials?.longTermBankLoans || null,
-        tradeReceivables: kap.financials?.tradeReceivables || null,
-        financialInvestments: kap.financials?.financialInvestments || null,
-        investmentProperty: kap.financials?.investmentProperty || null,
-        prepaidExpenses: kap.financials?.prepaidExpenses || null,
-        deferredTax: kap.financials?.deferredTax || null,
-        totalDebt: null, // Hesaplanacak
-        netDebt: null, // Hesaplanacak
-        workingCapital: null, // Hesaplanacak
+        period: fmp.financials?.period || kap.financials?.period || yahoo.financials?.period || db?.financials?.period || null,
+        revenue: fmp.financials?.revenue || kap.financials?.revenue || yahoo.financials?.revenue || db?.financials?.revenue || null,
+        grossProfit: fmp.financials?.grossProfit || kap.financials?.grossProfit || yahoo.financials?.grossProfit || db?.financials?.grossProfit || null,
+        netIncome: fmp.financials?.netIncome || kap.financials?.netIncome || yahoo.financials?.netIncome || db?.financials?.netIncome || null,
+        profitability: kap.financials?.profitability || yahoo.financials?.profitability || db?.financials?.profitability || null,
+        grossProfitMargin: db?.financials?.grossProfitMargin || null, // Hesaplanacak
+        equity: kap.financials?.equity || yahoo.financials?.equity || db?.financials?.equity || null,
+        currentAssets: kap.financials?.currentAssets || yahoo.financials?.currentAssets || db?.financials?.currentAssets || null,
+        fixedAssets: kap.financials?.fixedAssets || db?.financials?.fixedAssets || null, // enrichData'da hesaplanacak
+        totalAssets: kap.financials?.totalAssets || yahoo.financials?.totalAssets || db?.financials?.totalAssets || null,
+        shortTermLiabilities: kap.financials?.shortTermLiabilities || yahoo.financials?.shortTermLiabilities || db?.financials?.shortTermLiabilities || null,
+        longTermLiabilities: kap.financials?.longTermLiabilities || yahoo.financials?.longTermLiabilities || db?.financials?.longTermLiabilities || null,
+        shortTermBankLoans: kap.financials?.shortTermBankLoans || db?.financials?.shortTermBankLoans || null,
+        longTermBankLoans: kap.financials?.longTermBankLoans || db?.financials?.longTermBankLoans || null,
+        tradeReceivables: kap.financials?.tradeReceivables || db?.financials?.tradeReceivables || null,
+        financialInvestments: kap.financials?.financialInvestments || db?.financials?.financialInvestments || null,
+        investmentProperty: kap.financials?.investmentProperty || db?.financials?.investmentProperty || null,
+        prepaidExpenses: kap.financials?.prepaidExpenses || db?.financials?.prepaidExpenses || null,
+        deferredTax: kap.financials?.deferredTax || db?.financials?.deferredTax || null,
+        totalDebt: db?.financials?.totalDebt || null, // Hesaplanacak
+        netDebt: db?.financials?.netDebt || null, // Hesaplanacak
+        workingCapital: db?.financials?.workingCapital || null, // Hesaplanacak
       },
 
       analysis: {
-        domesticSalesRatio: yahoo.analysis?.domesticSalesRatio || null,
-        foreignSalesRatio: yahoo.analysis?.foreignSalesRatio || null,
-        exportRatio: yahoo.analysis?.exportRatio || null,
-        averageDividend: yahoo.analysis?.averageDividend || null,
+        domesticSalesRatio: yahoo.analysis?.domesticSalesRatio || db?.analysis?.domesticSalesRatio || null,
+        foreignSalesRatio: yahoo.analysis?.foreignSalesRatio || db?.analysis?.foreignSalesRatio || null,
+        exportRatio: yahoo.analysis?.exportRatio || db?.analysis?.exportRatio || null,
+        averageDividend: yahoo.analysis?.averageDividend || db?.analysis?.averageDividend || null,
       },
 
       liquidity: {
-        currentRatio: null, // Hesaplanacak
-        acidTestRatio: null, // Hesaplanacak
-        cashRatio: null, // Hesaplanacak
+        currentRatio: db?.liquidity?.currentRatio || null, // Hesaplanacak
+        acidTestRatio: db?.liquidity?.acidTestRatio || null, // Hesaplanacak
+        cashRatio: db?.liquidity?.cashRatio || null, // Hesaplanacak
       },
 
       leverage: {
-        debtToEquity: null, // Hesaplanacak
-        debtToAssets: null, // Hesaplanacak
-        shortTermDebtRatio: null, // Hesaplanacak
-        longTermDebtRatio: null, // Hesaplanacak
+        debtToEquity: db?.leverage?.debtToEquity || null, // Hesaplanacak
+        debtToAssets: db?.leverage?.debtToAssets || null, // Hesaplanacak
+        shortTermDebtRatio: db?.leverage?.shortTermDebtRatio || null, // Hesaplanacak
+        longTermDebtRatio: db?.leverage?.longTermDebtRatio || null, // Hesaplanacak
       },
 
-      smartAnalysis: {
+      smartAnalysis: db?.smartAnalysis || {
         overallScore: 50,
         rating: 'Hold',
         valuationScore: 50,

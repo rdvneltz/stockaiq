@@ -6,6 +6,7 @@ import healthRoutes from './routes/health.routes';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { apiLimiter } from './middleware/rateLimiter';
 import healthCheckService from './services/healthCheck.service';
+import database from './utils/database';
 import logger from './utils/logger';
 import path from 'path';
 import fs from 'fs';
@@ -71,6 +72,11 @@ app.use(errorHandler);
 
 // Initialize health check for serverless
 if (process.env.NODE_ENV === 'production') {
+  // MongoDB bağlantısını başlat (optional)
+  database.connect().catch(err =>
+    logger.error('MongoDB connection failed:', err)
+  );
+
   // Serverless ortamda periyodik check yapma, sadece ilk init
   healthCheckService.checkAllSources().catch(err =>
     logger.error('Initial health check failed:', err)
@@ -81,6 +87,10 @@ if (process.env.NODE_ENV === 'production') {
     logger.info(`🚀 StockAIQ Backend started on port ${PORT}`);
     logger.info(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
     logger.info(`🔗 API URL: http://localhost:${PORT}`);
+
+    // MongoDB'ye bağlan (optional - sistem MongoDB olmadan da çalışır)
+    logger.info('🗄️  Connecting to MongoDB...');
+    await database.connect();
 
     // Başlangıçta sistem sağlık kontrolü yap
     logger.info('🏥 Running initial health check...');
@@ -103,13 +113,15 @@ if (process.env.NODE_ENV === 'production') {
   });
 
   // Graceful shutdown
-  process.on('SIGTERM', () => {
+  process.on('SIGTERM', async () => {
     logger.info('SIGTERM signal received: closing HTTP server');
+    await database.disconnect();
     process.exit(0);
   });
 
-  process.on('SIGINT', () => {
+  process.on('SIGINT', async () => {
     logger.info('SIGINT signal received: closing HTTP server');
+    await database.disconnect();
     process.exit(0);
   });
 
