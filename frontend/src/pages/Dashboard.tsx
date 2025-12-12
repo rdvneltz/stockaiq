@@ -31,6 +31,7 @@ const Dashboard: React.FC = () => {
   const [addingStock, setAddingStock] = useState(false);
   const [viewMode, setViewMode] = useState<'favorites' | 'all'>('favorites');
   const [filterRating, setFilterRating] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Load favorites from localStorage on mount
   useEffect(() => {
@@ -117,11 +118,47 @@ const Dashboard: React.FC = () => {
     loadStocks();
   };
 
-  // Filter stocks based on rating
-  const filteredStocks = stocks.filter(stock => {
-    if (filterRating === 'all') return true;
-    return stock.smartAnalysis.rating === filterRating;
-  });
+  // Akıllı analize göre sıralama fonksiyonu
+  const getSortOrder = (rating: string): number => {
+    switch (rating) {
+      case 'Strong Buy': return 1;
+      case 'Buy': return 2;
+      case 'Hold': return 3;
+      case 'Sell': return 4;
+      case 'Strong Sell': return 5;
+      default: return 6;
+    }
+  };
+
+  // Filter and sort stocks
+  const filteredAndSortedStocks = stocks
+    .filter(stock => {
+      // Rating filter
+      if (filterRating !== 'all' && stock.smartAnalysis.rating !== filterRating) {
+        return false;
+      }
+
+      // Search filter
+      if (searchQuery.trim()) {
+        const query = searchQuery.trim().toUpperCase();
+        return stock.symbol.toUpperCase().startsWith(query) ||
+               stock.companyName?.toUpperCase().includes(query);
+      }
+
+      return true;
+    })
+    .sort((a, b) => {
+      // Önce akıllı analize göre sırala
+      const orderA = getSortOrder(a.smartAnalysis.rating);
+      const orderB = getSortOrder(b.smartAnalysis.rating);
+
+      if (orderA !== orderB) {
+        return orderA - orderB;
+      }
+
+      // Aynı rating ise overall score'a göre sırala (yüksekten düşüğe)
+      return (b.smartAnalysis.overallScore || 0) - (a.smartAnalysis.overallScore || 0);
+    });
 
   return (
     <div className="dashboard">
@@ -129,7 +166,7 @@ const Dashboard: React.FC = () => {
       <div className="header">
         <div className="title-section">
           <h1>📊 Piyasa Görünümü</h1>
-          <p>{filteredStocks.length} hisse görüntüleniyor</p>
+          <p>{filteredAndSortedStocks.length} hisse görüntüleniyor</p>
         </div>
         <div className="controls">
           <div className="view-toggle">
@@ -146,6 +183,14 @@ const Dashboard: React.FC = () => {
             >
               BIST100 ({BIST100_STOCKS.length})
             </button>
+          </div>
+          <div className="search-box">
+            <input
+              type="text"
+              placeholder="Ara (örn: TH, THYAO)"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
           </div>
           <div className="filter-section">
             <Filter size={16} />
@@ -186,7 +231,7 @@ const Dashboard: React.FC = () => {
         <div className="loading">Hisseler yükleniyor...</div>
       ) : (
         <div className="stock-grid">
-          {filteredStocks.map((stock) => (
+          {filteredAndSortedStocks.map((stock) => (
             <StockCard
               key={stock.symbol}
               stock={stock}
@@ -298,6 +343,30 @@ const Dashboard: React.FC = () => {
         .filter-select option {
           background: #1a1f3a;
           color: #fff;
+        }
+
+        .search-box {
+          display: flex;
+          align-items: center;
+        }
+
+        .search-box input {
+          padding: 8px 12px;
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 8px;
+          color: #fff;
+          font-size: 14px;
+          outline: none;
+          width: 200px;
+        }
+
+        .search-box input:focus {
+          border-color: #667eea;
+        }
+
+        .search-box input::placeholder {
+          color: rgba(255, 255, 255, 0.4);
         }
 
         .add-stock {

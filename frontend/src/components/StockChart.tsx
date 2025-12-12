@@ -24,7 +24,6 @@ const StockChart: React.FC<StockChartProps> = ({
   const [showBollinger, setShowBollinger] = useState(true);
   const [showFibonacci, setShowFibonacci] = useState(true);
   const [interval, setInterval] = useState<'1h' | '4h' | '1d' | '1wk' | '1mo'>('1d');
-  const [period, setPeriod] = useState<'5d' | '1mo' | '6mo' | '2y' | '5y'>('6mo');
   const [loading, setLoading] = useState(true);
   const [historicalData, setHistoricalData] = useState<CandlestickData[]>([]);
   const bollingerSeriesRef = useRef<{
@@ -33,11 +32,30 @@ const StockChart: React.FC<StockChartProps> = ({
     lower: ISeriesApi<'Line'> | null;
   }>({ upper: null, middle: null, lower: null });
 
+  // Her interval için uygun period'u otomatik belirle
+  const getPeriodForInterval = (interval: string): string => {
+    switch (interval) {
+      case '1h':
+        return '5d'; // 1 saatlik için 5 gün yeterli
+      case '4h':
+        return '1mo'; // 4 saatlik için 1 ay
+      case '1d':
+        return '6mo'; // Günlük için 6 ay
+      case '1wk':
+        return '2y'; // Haftalık için 2 yıl
+      case '1mo':
+        return '5y'; // Aylık için 5 yıl
+      default:
+        return '6mo';
+    }
+  };
+
   // Fetch real historical data from backend
   const fetchHistoricalData = async () => {
     setLoading(true);
     try {
       const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+      const period = getPeriodForInterval(interval);
       const response = await fetch(`${API_BASE_URL}/stocks/${symbol}/historical?period=${period}&interval=${interval}`);
 
       if (!response.ok) {
@@ -46,10 +64,11 @@ const StockChart: React.FC<StockChartProps> = ({
 
       const result = await response.json();
 
-      if (result.success && result.data) {
+      if (result.success && result.data && result.data.length > 0) {
         setHistoricalData(result.data);
       } else {
-        throw new Error(result.error || 'No data returned');
+        console.warn('No data returned from API');
+        setHistoricalData([]);
       }
     } catch (error) {
       console.error('Error fetching historical data:', error);
@@ -62,7 +81,7 @@ const StockChart: React.FC<StockChartProps> = ({
 
   useEffect(() => {
     fetchHistoricalData();
-  }, [symbol, interval, period]);
+  }, [symbol, interval]);
 
   // Calculate Bollinger Bands
   const calculateBollingerBands = (data: CandlestickData[], period: number = 20, stdDev: number = 2) => {
@@ -226,52 +245,38 @@ const StockChart: React.FC<StockChartProps> = ({
         <div className="interval-selector">
           <button
             className={interval === '1h' ? 'active' : ''}
-            onClick={() => { setInterval('1h'); setPeriod('5d'); }}
-            title="1 Saatlik mumlar (5 gün)"
+            onClick={() => setInterval('1h')}
+            title="1 Saatlik mumlar"
           >
-            1S
+            1 Saat
           </button>
           <button
             className={interval === '4h' ? 'active' : ''}
-            onClick={() => { setInterval('4h'); setPeriod('1mo'); }}
-            title="4 Saatlik mumlar (1 ay)"
+            onClick={() => setInterval('4h')}
+            title="4 Saatlik mumlar"
           >
-            4S
+            4 Saat
           </button>
           <button
-            className={interval === '1d' && period === '5d' ? 'active' : ''}
-            onClick={() => { setInterval('1d'); setPeriod('5d'); }}
-            title="Günlük mumlar (5 gün)"
+            className={interval === '1d' ? 'active' : ''}
+            onClick={() => setInterval('1d')}
+            title="Günlük mumlar"
           >
-            5G
+            Günlük
           </button>
           <button
-            className={interval === '1d' && period === '1mo' ? 'active' : ''}
-            onClick={() => { setInterval('1d'); setPeriod('1mo'); }}
-            title="Günlük mumlar (1 ay)"
+            className={interval === '1wk' ? 'active' : ''}
+            onClick={() => setInterval('1wk')}
+            title="Haftalık mumlar"
           >
-            1A
+            Haftalık
           </button>
           <button
-            className={interval === '1d' && period === '6mo' ? 'active' : ''}
-            onClick={() => { setInterval('1d'); setPeriod('6mo'); }}
-            title="Günlük mumlar (6 ay)"
+            className={interval === '1mo' ? 'active' : ''}
+            onClick={() => setInterval('1mo')}
+            title="Aylık mumlar"
           >
-            6A
-          </button>
-          <button
-            className={interval === '1wk' && period === '2y' ? 'active' : ''}
-            onClick={() => { setInterval('1wk'); setPeriod('2y'); }}
-            title="Haftalık mumlar (2 yıl)"
-          >
-            2Y
-          </button>
-          <button
-            className={interval === '1mo' && period === '5y' ? 'active' : ''}
-            onClick={() => { setInterval('1mo'); setPeriod('5y'); }}
-            title="Aylık mumlar (5 yıl)"
-          >
-            5Y
+            Aylık
           </button>
         </div>
       </div>
