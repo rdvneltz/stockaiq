@@ -133,16 +133,19 @@ const Dashboard: React.FC = () => {
   // Filter and sort stocks
   const filteredAndSortedStocks = stocks
     .filter(stock => {
-      // Rating filter
+      // Rating filter - önce rating'e bak
       if (filterRating !== 'all' && stock.smartAnalysis.rating !== filterRating) {
         return false;
       }
 
-      // Search filter
+      // Search filter - rating geçtiyse search'e bak
       if (searchQuery.trim()) {
         const query = searchQuery.trim().toUpperCase();
-        return stock.symbol.toUpperCase().startsWith(query) ||
+        const matchesSearch = stock.symbol.toUpperCase().startsWith(query) ||
                stock.companyName?.toUpperCase().includes(query);
+        if (!matchesSearch) {
+          return false;
+        }
       }
 
       return true;
