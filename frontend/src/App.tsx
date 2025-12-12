@@ -1,25 +1,108 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Link, useLocation } from 'react-router-dom';
-import { TrendingUp, Settings as SettingsIcon } from 'lucide-react';
+import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
+import { TrendingUp, Settings as SettingsIcon, LogOut, Shield } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import Settings from './pages/Settings';
+import Login from './pages/Login';
+import Register from './pages/Register';
+import PendingApproval from './pages/PendingApproval';
+import AdminPanel from './pages/AdminPanel';
 import HealthAlert from './components/HealthAlert';
+import { AuthProvider, useAuth } from './context/AuthContext';
+
+// Protected Route wrapper
+const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', color: '#fff' }}>Yükleniyor...</div>;
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // Onaylanmamış kullanıcıları pending sayfasına yönlendir
+  if (!user.approved) {
+    return <Navigate to="/pending" replace />;
+  }
+
+  return <>{children}</>;
+};
+
+// Admin Route wrapper
+const AdminRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) {
+    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh', color: '#fff' }}>Yükleniyor...</div>;
+  }
+
+  if (!user) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (user.role !== 'admin') {
+    return <Navigate to="/" replace />;
+  }
+
+  return <>{children}</>;
+};
 
 const App: React.FC = () => {
   return (
     <Router>
-      <div className="app">
-        <HealthAlert />
-        <Navbar />
-        <main className="main-content">
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/settings" element={<Settings />} />
-          </Routes>
-        </main>
-        <Footer />
-      </div>
+      <AuthProvider>
+        <AppContent />
+      </AuthProvider>
+    </Router>
+  );
+};
 
+const AppContent: React.FC = () => {
+  const location = useLocation();
+  const isAuthPage = location.pathname === '/login' || location.pathname === '/register';
+
+  return (
+    <div className="app">
+      {!isAuthPage && (
+        <>
+          <HealthAlert />
+          <Navbar />
+        </>
+      )}
+      <main className="main-content">
+        <Routes>
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
+          <Route path="/pending" element={<PendingApproval />} />
+          <Route
+            path="/"
+            element={
+              <ProtectedRoute>
+                <Dashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/settings"
+            element={
+              <ProtectedRoute>
+                <Settings />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <AdminRoute>
+                <AdminPanel />
+              </AdminRoute>
+            }
+          />
+        </Routes>
+      </main>
+      {!isAuthPage && <Footer />}
       <style>{`
         * {
           margin: 0;
@@ -58,12 +141,13 @@ const App: React.FC = () => {
           cursor: not-allowed;
         }
       `}</style>
-    </Router>
+    </div>
   );
 };
 
 const Navbar: React.FC = () => {
   const location = useLocation();
+  const { user, logout } = useAuth();
 
   return (
     <nav className="navbar">
@@ -81,6 +165,15 @@ const Navbar: React.FC = () => {
             <TrendingUp size={18} />
             Piyasa
           </Link>
+          {user?.role === 'admin' && (
+            <Link
+              to="/admin"
+              className={`nav-link ${location.pathname === '/admin' ? 'active' : ''}`}
+            >
+              <Shield size={18} />
+              Admin
+            </Link>
+          )}
           <Link
             to="/settings"
             className={`nav-link ${location.pathname === '/settings' ? 'active' : ''}`}
@@ -88,6 +181,12 @@ const Navbar: React.FC = () => {
             <SettingsIcon size={18} />
             Ayarlar
           </Link>
+          {user && (
+            <button onClick={logout} className="nav-link logout-btn">
+              <LogOut size={18} />
+              Çıkış
+            </button>
+          )}
         </div>
       </div>
 
@@ -147,6 +246,17 @@ const Navbar: React.FC = () => {
         .nav-link.active {
           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
           color: #fff;
+        }
+
+        .logout-btn {
+          background: none;
+          border: none;
+          font-size: inherit;
+        }
+
+        .logout-btn:hover {
+          background: rgba(220, 38, 38, 0.1);
+          color: #dc2626;
         }
 
         @media (max-width: 768px) {

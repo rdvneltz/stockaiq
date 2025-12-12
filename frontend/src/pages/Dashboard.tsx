@@ -4,9 +4,10 @@ import { stockApi } from '../services/api';
 import { StockData } from '../types';
 import { formatCurrency, formatPercent, getChangeColor, formatTimeAgo } from '../utils/formatters';
 import StockChart from '../components/StockChart';
+import { useAuth } from '../context/AuthContext';
 
-// Complete BIST100 list
-const BIST100_STOCKS = [
+// Complete BIST100 list (100 unique stocks - duplicates removed)
+const BIST100_STOCKS = Array.from(new Set([
   'THYAO', 'GARAN', 'AKBNK', 'EREGL', 'SAHOL', 'KCHOL', 'TUPRS', 'TCELL',
   'SISE', 'PETKM', 'VAKBN', 'YKBNK', 'HALKB', 'ASELS', 'BIMAS', 'ARCLK',
   'KOZAL', 'TAVHL', 'PGSUS', 'ENKAI', 'TOASO', 'KRDMD', 'VESTL', 'FROTO',
@@ -14,17 +15,19 @@ const BIST100_STOCKS = [
   'GUBRF', 'TTRAK', 'GLYHO', 'KORDS', 'ENJSA', 'AEFES', 'OTKAR', 'BRYAT',
   'AYGAZ', 'MGROS', 'ULKER', 'ISGYO', 'TSKB', 'ALGYO', 'CIMSA', 'DOAS',
   'AKENR', 'HEKTS', 'LOGO', 'SKBNK', 'ALARK', 'CCOLA', 'TRKCM', 'KLMSN',
-  'SODA', 'EGEEN', 'GESAN', 'MAVI', 'MPARK', 'BUCIM', 'ISCTR', 'KARTN',
+  'SODA', 'EGEEN', 'GESAN', 'MAVI', 'MPARK', 'BUCIM', 'KARTN', 'VESBE',
   'IZMDC', 'KONTR', 'AKSA', 'MNDRS', 'GOODY', 'NETAS', 'ODAS', 'OYAKC',
   'TRGYO', 'VERUS', 'AYDEM', 'CRFSA', 'KARSN', 'PENTA', 'AGHOL', 'TKFEN',
   'ANACM', 'ANELE', 'BAGFS', 'BANVT', 'BFREN', 'BIOEN', 'BRSAN', 'BTCIM',
-  'CLEBI', 'CWENE', 'DEVA', 'DOAS', 'DURDO', 'ECILC', 'EMKEL', 'ENERY'
-];
+  'CLEBI', 'CWENE', 'DEVA', 'DURDO', 'ECILC', 'EMKEL', 'ENERY', 'ERBOS',
+  'IHLAS', 'IPEKE', 'ISDMR', 'ISGSY', 'JANTS'
+]));
 
 const Dashboard: React.FC = () => {
+  const { user, updateFavorites } = useAuth();
   const [stocks, setStocks] = useState<StockData[]>([]);
+  const [stockCache, setStockCache] = useState<Map<string, StockData>>(new Map());
   const [watchlist, setWatchlist] = useState<string[]>([]);
-  const [favorites, setFavorites] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedStock, setSelectedStock] = useState<StockData | null>(null);
   const [newSymbol, setNewSymbol] = useState('');
@@ -33,49 +36,92 @@ const Dashboard: React.FC = () => {
   const [filterRating, setFilterRating] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
 
-  // Load favorites from localStorage on mount
+  // Get favorites from user
+  const favorites = user?.favorites || [];
+
+  // Load favorites from user on mount
   useEffect(() => {
-    const savedFavorites = localStorage.getItem('stockaiq_favorites');
-    const initialFavorites = savedFavorites ? JSON.parse(savedFavorites) : ['THYAO', 'GARAN', 'AKBNK', 'EREGL', 'ASELS'];
-    setFavorites(initialFavorites);
+    const initialFavorites = favorites.length > 0 ? favorites : ['THYAO', 'GARAN', 'AKBNK', 'EREGL', 'ASELS'];
     setWatchlist(viewMode === 'favorites' ? initialFavorites : BIST100_STOCKS);
-  }, []);
+  }, [user]);
 
   // Update watchlist when view mode or favorites change
   useEffect(() => {
-    setWatchlist(viewMode === 'favorites' ? favorites : BIST100_STOCKS);
-  }, [viewMode, favorites]);
+    const newWatchlist = viewMode === 'favorites' ? favorites : BIST100_STOCKS;
+    setWatchlist(newWatchlist);
+
+    // Cache'den hemen göster, sonra güncelle
+    const cachedStocks = newWatchlist
+      .map(symbol => stockCache.get(symbol))
+      .filter((stock): stock is StockData => stock !== undefined);
+
+    if (cachedStocks.length > 0) {
+      setStocks(cachedStocks);
+      setLoading(false);
+    }
+  }, [viewMode, favorites, stockCache]);
 
   useEffect(() => {
     if (watchlist.length > 0) {
       loadStocks();
-      // Her 10 saniyede bir güncelle (anlık fiyatlar için)
-      const interval = setInterval(loadStocks, 10000);
+      // Her 30 saniyede bir güncelle (daha az sıklıkla)
+      const interval = setInterval(loadStocks, 30000);
       return () => clearInterval(interval);
     }
   }, [watchlist]);
 
   const loadStocks = async () => {
+    // Sadece cache'de olmayanları çek
+    const uncachedSymbols = watchlist.filter(symbol => !stockCache.has(symbol));
+
+    if (uncachedSymbols.length === 0 && stockCache.size > 0) {
+      // Hepsi cache'de, sadece görüntüle
+      const cachedStocks = watchlist
+        .map(symbol => stockCache.get(symbol))
+        .filter((stock): stock is StockData => stock !== undefined);
+      setStocks(cachedStocks);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
-      // BIST100 çok fazla, batch'ler halinde çek (10'luk gruplar)
+      // Batch'ler halinde çek (10'luk gruplar)
       const batchSize = 10;
       const batches: string[][] = [];
+      const symbolsToFetch = uncachedSymbols.length > 0 ? uncachedSymbols : watchlist;
 
-      for (let i = 0; i < watchlist.length; i += batchSize) {
-        batches.push(watchlist.slice(i, i + batchSize));
+      for (let i = 0; i < symbolsToFetch.length; i += batchSize) {
+        batches.push(symbolsToFetch.slice(i, i + batchSize));
       }
 
       // Tüm batch'leri paralel çek
       const batchPromises = batches.map(batch => stockApi.getMultipleStocks(batch));
       const batchResults = await Promise.allSettled(batchPromises);
 
-      // Başarılı sonuçları birleştir
-      const allStocks = batchResults
+      // Başarılı sonuçları birleştir ve cache'e ekle
+      const newStocks = batchResults
         .filter((result): result is PromiseFulfilledResult<StockData[]> => result.status === 'fulfilled')
         .flatMap(result => result.value);
 
-      setStocks(allStocks);
+      // Cache'i güncelle
+      const newCache = new Map(stockCache);
+      newStocks.forEach(stock => {
+        newCache.set(stock.symbol, stock);
+      });
+      setStockCache(newCache);
+
+      // Watchlist'teki tüm hisseleri göster (cache + yeni)
+      const allStocks = watchlist
+        .map(symbol => newCache.get(symbol))
+        .filter((stock): stock is StockData => stock !== undefined);
+
+      // Duplicate'leri kaldır (symbol bazında unique)
+      const uniqueStocks = Array.from(
+        new Map(allStocks.map(stock => [stock.symbol, stock])).values()
+      );
+
+      setStocks(uniqueStocks);
     } catch (error) {
       console.error('Failed to load stocks:', error);
     } finally {
@@ -96,8 +142,7 @@ const Dashboard: React.FC = () => {
     try {
       await stockApi.getStock(symbolUpper);
       const newFavorites = [...favorites, symbolUpper];
-      setFavorites(newFavorites);
-      localStorage.setItem('stockaiq_favorites', JSON.stringify(newFavorites));
+      await updateFavorites(newFavorites);
       setNewSymbol('');
     } catch (error) {
       alert('Hisse bulunamadı veya eklenemedi');
@@ -106,12 +151,11 @@ const Dashboard: React.FC = () => {
     }
   };
 
-  const toggleFavorite = (symbol: string) => {
+  const toggleFavorite = async (symbol: string) => {
     const newFavorites = favorites.includes(symbol)
       ? favorites.filter(s => s !== symbol)
       : [...favorites, symbol];
-    setFavorites(newFavorites);
-    localStorage.setItem('stockaiq_favorites', JSON.stringify(newFavorites));
+    await updateFavorites(newFavorites);
   };
 
   const handleRefresh = () => {
