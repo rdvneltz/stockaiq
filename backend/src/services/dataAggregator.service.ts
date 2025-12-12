@@ -5,6 +5,7 @@ import twelveDataService from './twelveData.service';
 import finnhubService from './finnhub.service';
 import fmpService from './fmp.service';
 import stockDbService from './stockDb.service';
+import priceTargetCalculator from './priceTargetCalculator.service';
 import { DataCategory } from '../models/Stock.model';
 import cache from '../utils/cache';
 import logger from '../utils/logger';
@@ -73,7 +74,13 @@ class DataAggregatorService {
       // 7. Akıllı analiz yap
       this.performSmartAnalysis(aggregatedData);
 
-      // 8. MongoDB'ye kaydet (hangi kategoriler güncellendi?)
+      // 8. AI fiyat hedefleri hesapla (smart analysis sonrası)
+      const priceTargets = priceTargetCalculator.calculatePriceTargets(aggregatedData);
+      if (priceTargets) {
+        aggregatedData.priceTargets = priceTargets;
+      }
+
+      // 9. MongoDB'ye kaydet (hangi kategoriler güncellendi?)
       await stockDbService.saveStock(aggregatedData, {
         realtime: needsRealtimeUpdate,
         daily: needsDailyUpdate,
@@ -81,7 +88,7 @@ class DataAggregatorService {
         static: needsStaticUpdate,
       });
 
-      // 9. In-memory cache'e kaydet
+      // 10. In-memory cache'e kaydet
       cache.set(cacheKey, aggregatedData);
 
       logger.info(`Data aggregation completed for ${symbol}`);

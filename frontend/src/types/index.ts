@@ -106,6 +106,33 @@ export interface StockData {
     recommendations: string[];
   };
 
+  priceTargets?: {
+    shortTerm: {
+      target: number;
+      confidence: number;
+      potential: number;
+      timeframe: string;
+    };
+    midTerm: {
+      target: number;
+      confidence: number;
+      potential: number;
+      timeframe: string;
+    };
+    longTerm: {
+      target: number;
+      confidence: number;
+      potential: number;
+      timeframe: string;
+    };
+    calculatedAt: Date;
+    models: {
+      technical: { shortTerm: number; midTerm: number; longTerm: number };
+      fundamental: { shortTerm: number; midTerm: number; longTerm: number };
+      momentum: { shortTerm: number; midTerm: number; longTerm: number };
+    };
+  };
+
   lastUpdated: Date;
 }
 

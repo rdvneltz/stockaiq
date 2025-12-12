@@ -17,6 +17,7 @@ const App: React.FC = () => {
             <Route path="/settings" element={<Settings />} />
           </Routes>
         </main>
+        <Footer />
       </div>
 
       <style>{`
@@ -166,6 +167,50 @@ const Navbar: React.FC = () => {
         }
       `}</style>
     </nav>
+  );
+};
+
+const Footer: React.FC = () => {
+  const currentYear = new Date().getFullYear();
+
+  return (
+    <footer className="footer">
+      <div className="footer-container">
+        <p className="footer-text">
+          © {currentYear} StockAIQ. Developed by <span className="developer-name">A. Rıdvan Elitez</span>
+        </p>
+      </div>
+
+      <style>{`
+        .footer {
+          background: rgba(255, 255, 255, 0.03);
+          border-top: 1px solid rgba(255, 255, 255, 0.1);
+          padding: 20px 0;
+          margin-top: auto;
+        }
+
+        .footer-container {
+          max-width: 1600px;
+          margin: 0 auto;
+          padding: 0 20px;
+          text-align: center;
+        }
+
+        .footer-text {
+          font-size: 13px;
+          color: rgba(255, 255, 255, 0.6);
+        }
+
+        .developer-name {
+          color: rgba(255, 255, 255, 0.8);
+          font-weight: 600;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          background-clip: text;
+        }
+      `}</style>
+    </footer>
   );
 };
 

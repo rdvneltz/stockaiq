@@ -115,6 +115,34 @@ export interface StockData {
     recommendations: string[]; // Öneriler
   };
 
+  // AI Fiyat Hedefleri
+  priceTargets?: {
+    shortTerm: {
+      target: number; // Kısa vadeli hedef (1-3 ay)
+      confidence: number; // Güvenilirlik (0-100)
+      potential: number; // Potansiyel % değişim
+      timeframe: string; // "1-3 ay"
+    };
+    midTerm: {
+      target: number; // Orta vadeli hedef (3-6 ay)
+      confidence: number;
+      potential: number;
+      timeframe: string; // "3-6 ay"
+    };
+    longTerm: {
+      target: number; // Uzun vadeli hedef (6-12 ay)
+      confidence: number;
+      potential: number;
+      timeframe: string; // "6-12 ay"
+    };
+    calculatedAt: Date; // Hesaplama zamanı
+    models: {
+      technical: { shortTerm: number; midTerm: number; longTerm: number };
+      fundamental: { shortTerm: number; midTerm: number; longTerm: number };
+      momentum: { shortTerm: number; midTerm: number; longTerm: number };
+    };
+  };
+
   lastUpdated: Date;
 }
 

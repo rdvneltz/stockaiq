@@ -967,6 +967,115 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, onClose }) =
                   </div>
                 </div>
               )}
+
+              {stock.priceTargets && (
+                <div className="detail-section">
+                  <h3>🎯 AI Fiyat Hedefleri</h3>
+                  <p style={{ fontSize: '13px', opacity: 0.7, marginBottom: '16px' }}>
+                    3 model hibrit yaklaşımı: Teknik Analiz + Fundamental Analiz + Momentum/Sentiment
+                  </p>
+                  <div className="price-targets-grid">
+                    <div className="price-target-card">
+                      <div className="target-header">
+                        <span className="target-label">Kısa Vade</span>
+                        <span className="target-timeframe">{stock.priceTargets.shortTerm.timeframe}</span>
+                      </div>
+                      <div className="target-price">{stock.priceTargets.shortTerm.target.toFixed(2)} ₺</div>
+                      <div className="target-potential" style={{ color: stock.priceTargets.shortTerm.potential >= 0 ? '#10b981' : '#ef4444' }}>
+                        {stock.priceTargets.shortTerm.potential >= 0 ? '+' : ''}{stock.priceTargets.shortTerm.potential.toFixed(2)}%
+                      </div>
+                      <div className="target-confidence">
+                        <div className="confidence-bar">
+                          <div
+                            className="confidence-fill"
+                            style={{
+                              width: `${stock.priceTargets.shortTerm.confidence}%`,
+                              backgroundColor: stock.priceTargets.shortTerm.confidence >= 70 ? '#10b981' : stock.priceTargets.shortTerm.confidence >= 50 ? '#fbbf24' : '#ef4444'
+                            }}
+                          />
+                        </div>
+                        <span className="confidence-text">Güven: {stock.priceTargets.shortTerm.confidence}%</span>
+                      </div>
+                    </div>
+
+                    <div className="price-target-card">
+                      <div className="target-header">
+                        <span className="target-label">Orta Vade</span>
+                        <span className="target-timeframe">{stock.priceTargets.midTerm.timeframe}</span>
+                      </div>
+                      <div className="target-price">{stock.priceTargets.midTerm.target.toFixed(2)} ₺</div>
+                      <div className="target-potential" style={{ color: stock.priceTargets.midTerm.potential >= 0 ? '#10b981' : '#ef4444' }}>
+                        {stock.priceTargets.midTerm.potential >= 0 ? '+' : ''}{stock.priceTargets.midTerm.potential.toFixed(2)}%
+                      </div>
+                      <div className="target-confidence">
+                        <div className="confidence-bar">
+                          <div
+                            className="confidence-fill"
+                            style={{
+                              width: `${stock.priceTargets.midTerm.confidence}%`,
+                              backgroundColor: stock.priceTargets.midTerm.confidence >= 70 ? '#10b981' : stock.priceTargets.midTerm.confidence >= 50 ? '#fbbf24' : '#ef4444'
+                            }}
+                          />
+                        </div>
+                        <span className="confidence-text">Güven: {stock.priceTargets.midTerm.confidence}%</span>
+                      </div>
+                    </div>
+
+                    <div className="price-target-card">
+                      <div className="target-header">
+                        <span className="target-label">Uzun Vade</span>
+                        <span className="target-timeframe">{stock.priceTargets.longTerm.timeframe}</span>
+                      </div>
+                      <div className="target-price">{stock.priceTargets.longTerm.target.toFixed(2)} ₺</div>
+                      <div className="target-potential" style={{ color: stock.priceTargets.longTerm.potential >= 0 ? '#10b981' : '#ef4444' }}>
+                        {stock.priceTargets.longTerm.potential >= 0 ? '+' : ''}{stock.priceTargets.longTerm.potential.toFixed(2)}%
+                      </div>
+                      <div className="target-confidence">
+                        <div className="confidence-bar">
+                          <div
+                            className="confidence-fill"
+                            style={{
+                              width: `${stock.priceTargets.longTerm.confidence}%`,
+                              backgroundColor: stock.priceTargets.longTerm.confidence >= 70 ? '#10b981' : stock.priceTargets.longTerm.confidence >= 50 ? '#fbbf24' : '#ef4444'
+                            }}
+                          />
+                        </div>
+                        <span className="confidence-text">Güven: {stock.priceTargets.longTerm.confidence}%</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="model-breakdown">
+                    <h4 style={{ fontSize: '14px', marginBottom: '12px', opacity: 0.8 }}>Model Detayları</h4>
+                    <div className="model-grid">
+                      <div className="model-item">
+                        <span className="model-name">📐 Teknik Analiz</span>
+                        <div className="model-values">
+                          <span>{stock.priceTargets.models.technical.shortTerm.toFixed(2)} ₺</span>
+                          <span>{stock.priceTargets.models.technical.midTerm.toFixed(2)} ₺</span>
+                          <span>{stock.priceTargets.models.technical.longTerm.toFixed(2)} ₺</span>
+                        </div>
+                      </div>
+                      <div className="model-item">
+                        <span className="model-name">📊 Fundamental</span>
+                        <div className="model-values">
+                          <span>{stock.priceTargets.models.fundamental.shortTerm.toFixed(2)} ₺</span>
+                          <span>{stock.priceTargets.models.fundamental.midTerm.toFixed(2)} ₺</span>
+                          <span>{stock.priceTargets.models.fundamental.longTerm.toFixed(2)} ₺</span>
+                        </div>
+                      </div>
+                      <div className="model-item">
+                        <span className="model-name">⚡ Momentum</span>
+                        <div className="model-values">
+                          <span>{stock.priceTargets.models.momentum.shortTerm.toFixed(2)} ₺</span>
+                          <span>{stock.priceTargets.models.momentum.midTerm.toFixed(2)} ₺</span>
+                          <span>{stock.priceTargets.models.momentum.longTerm.toFixed(2)} ₺</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </>
           )}
 
@@ -1505,6 +1614,116 @@ const ScoreBar: React.FC<{ label: string; score: number }> = ({ label, score }) 
         .insight-item.recommendation {
           background: rgba(102, 126, 234, 0.15);
           border-left: 3px solid #667eea;
+        }
+
+        .price-targets-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+          gap: 16px;
+          margin-bottom: 24px;
+        }
+
+        .price-target-card {
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 12px;
+          padding: 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .target-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 4px;
+        }
+
+        .target-label {
+          font-size: 13px;
+          font-weight: 600;
+          opacity: 0.8;
+        }
+
+        .target-timeframe {
+          font-size: 11px;
+          opacity: 0.6;
+        }
+
+        .target-price {
+          font-size: 24px;
+          font-weight: 700;
+          color: #667eea;
+        }
+
+        .target-potential {
+          font-size: 16px;
+          font-weight: 600;
+        }
+
+        .target-confidence {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+          margin-top: 8px;
+        }
+
+        .confidence-bar {
+          width: 100%;
+          height: 6px;
+          background: rgba(255, 255, 255, 0.1);
+          border-radius: 3px;
+          overflow: hidden;
+        }
+
+        .confidence-fill {
+          height: 100%;
+          border-radius: 3px;
+          transition: width 0.3s ease;
+        }
+
+        .confidence-text {
+          font-size: 11px;
+          opacity: 0.7;
+        }
+
+        .model-breakdown {
+          background: rgba(255, 255, 255, 0.03);
+          border-radius: 8px;
+          padding: 16px;
+          margin-top: 16px;
+        }
+
+        .model-grid {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .model-item {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 8px 0;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .model-item:last-child {
+          border-bottom: none;
+        }
+
+        .model-name {
+          font-size: 13px;
+          opacity: 0.8;
+        }
+
+        .model-values {
+          display: flex;
+          gap: 16px;
+          font-size: 12px;
+          font-weight: 600;
+          opacity: 0.7;
         }
       `}</style>
     </div>
