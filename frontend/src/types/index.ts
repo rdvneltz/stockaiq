@@ -1,7 +1,36 @@
+export interface AccumulationSignal {
+  type: string;
+  strength: 'strong' | 'moderate' | 'weak' | 'neutral' | 'negative';
+  description: string;
+  value?: number;
+}
+
+export interface AccumulationSignals {
+  status: 'strong_accumulation' | 'accumulation' | 'neutral' | 'distribution' | 'strong_distribution';
+  overallScore: number;
+  signals: AccumulationSignal[];
+  alerts: string[];
+  calculatedAt: Date;
+}
+
+export interface BuyLevels {
+  strong: number;
+  moderate: number;
+  weak: number;
+}
+
+export interface SellLevels {
+  weak: number;
+  moderate: number;
+  strong: number;
+}
+
 export interface StockData {
   symbol: string;
   companyName: string;
   currentPrice: number | null;
+  sector?: string | null;
+  industry?: string | null;
 
   priceData: {
     currentPrice: number | null;
@@ -106,6 +135,8 @@ export interface StockData {
     recommendations: string[];
   };
 
+  accumulationSignals?: AccumulationSignals;
+
   priceTargets?: {
     shortTerm: {
       target: number;
@@ -131,6 +162,8 @@ export interface StockData {
       fundamental: { shortTerm: number; midTerm: number; longTerm: number };
       momentum: { shortTerm: number; midTerm: number; longTerm: number };
     };
+    buyLevels?: BuyLevels;
+    sellLevels?: SellLevels;
   };
 
   lastUpdated: Date;

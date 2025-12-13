@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import stockRoutes from './routes/stock.routes';
 import healthRoutes from './routes/health.routes';
 import authRoutes from './routes/auth.routes';
+import portfolioRoutes from './routes/portfolio.routes';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { apiLimiter } from './middleware/rateLimiter';
 import healthCheckService from './services/healthCheck.service';
@@ -48,13 +49,14 @@ app.use('/api', apiLimiter);
 app.use('/api/stocks', stockRoutes);
 app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/portfolios', portfolioRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
   res.json({
     name: 'StockAIQ API',
-    version: '1.1.0',
-    description: 'BIST Hisse Analiz Sistemi - Backend API (with Auth)',
+    version: '2.0.0',
+    description: 'BIST Hisse Analiz Sistemi - Backend API (with Auth, Portfolio, Accumulation Detection)',
     endpoints: {
       stocks: '/api/stocks/:symbol',
       multipleStocks: '/api/stocks/multiple',
@@ -64,7 +66,16 @@ app.get('/', (req, res) => {
       auth: '/api/auth',
       register: '/api/auth/register',
       login: '/api/auth/login',
+      portfolios: '/api/portfolios',
+      portfolioAnalysis: '/api/portfolios/:id/analysis',
     },
+    features: [
+      'Sektör bazlı değerleme',
+      'Birikim/Dağıtım tespiti',
+      'Al/Sat seviyeleri',
+      'Portfolio yönetimi ve risk analizi',
+      'AI fiyat hedefleri',
+    ],
     status: 'operational',
   });
 });

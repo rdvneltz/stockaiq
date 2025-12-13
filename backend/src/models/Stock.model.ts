@@ -99,6 +99,10 @@ export interface IStock extends Document {
     lotSize: number | null;
   };
 
+  // Sektör bilgisi (ayrıca root level'da da tutulur erişim kolaylığı için)
+  sector: string | null;
+  industry: string | null;
+
   // Analiz verileri (her quarterly güncellemede yeniden hesaplanır)
   analysis: {
     domesticSalesRatio: number | null;
@@ -208,6 +212,10 @@ const StockSchema: Schema = new Schema({
     industry: { type: String, default: null },
     lotSize: { type: Number, default: null },
   },
+
+  // Root level sector/industry (erişim kolaylığı için)
+  sector: { type: String, default: null },
+  industry: { type: String, default: null },
 
   analysis: {
     domesticSalesRatio: { type: Number, default: null },
