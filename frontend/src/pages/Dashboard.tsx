@@ -1482,10 +1482,22 @@ const StockDetailModal: React.FC<StockDetailModalProps> = ({ stock, onClose }) =
   );
 };
 
-const DetailRow: React.FC<{ label: string; value: string; bold?: boolean }> = ({ label, value, bold }) => (
-  <div className="detail-row" style={bold ? { background: 'rgba(102, 126, 234, 0.15)', borderLeft: '3px solid #667eea' } : {}}>
-    <span className="detail-label" style={bold ? { fontWeight: '700', opacity: 1 } : {}}>{label}</span>
-    <span className="detail-value" style={bold ? { fontWeight: '700', fontSize: '15px' } : {}}>{value}</span>
+const DetailRow: React.FC<{ label: string; value: string; bold?: boolean }> = ({ label, value, bold }) => {
+  const isNoData = value === '-' || value === 'N/A' || value === '' || value === 'null' || value === 'undefined';
+  const displayValue = isNoData ? 'Veri bekleniyor...' : value;
+
+  return (
+    <div className="detail-row" style={bold ? { background: 'rgba(102, 126, 234, 0.15)', borderLeft: '3px solid #667eea' } : {}}>
+      <span className="detail-label" style={bold ? { fontWeight: '700', opacity: 1 } : {}}>{label}</span>
+      <span
+        className="detail-value"
+        style={{
+          ...(bold ? { fontWeight: '700', fontSize: '15px' } : {}),
+          ...(isNoData ? { color: 'rgba(255,255,255,0.3)', fontStyle: 'italic', fontSize: '12px' } : {})
+        }}
+      >
+        {displayValue}
+      </span>
     <style>{`
       .detail-row {
         display: flex;
@@ -1507,7 +1519,8 @@ const DetailRow: React.FC<{ label: string; value: string; bold?: boolean }> = ({
       }
     `}</style>
   </div>
-);
+  );
+};
 
 const ScoreBar: React.FC<{ label: string; score: number }> = ({ label, score }) => {
   const getScoreColor = (score: number) => {

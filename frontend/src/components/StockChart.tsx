@@ -282,6 +282,20 @@ const StockChart: React.FC<StockChartProps> = ({
       </div>
       {loading ? (
         <div className="chart-loading">Grafik yükleniyor...</div>
+      ) : historicalData.length === 0 ? (
+        <div className="chart-no-data">
+          <div className="no-data-icon">📊</div>
+          <div className="no-data-message">
+            {(interval === '1h' || interval === '4h')
+              ? 'Gün içi veriler için API yapılandırması gerekli. Lütfen günlük, haftalık veya aylık grafik seçin.'
+              : 'Bu sembol için grafik verisi bulunamadı.'}
+          </div>
+          {(interval === '1h' || interval === '4h') && (
+            <div className="no-data-suggestion">
+              <button onClick={() => setInterval('1d')}>Günlük Grafiğe Geç</button>
+            </div>
+          )}
+        </div>
       ) : (
         <div ref={chartContainerRef} className="chart-wrapper" />
       )}
@@ -366,6 +380,47 @@ const StockChart: React.FC<StockChartProps> = ({
           opacity: 0.7;
           background: rgba(255, 255, 255, 0.03);
           border-radius: 8px;
+        }
+
+        .chart-no-data {
+          height: 400px;
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          gap: 16px;
+          background: rgba(255, 255, 255, 0.03);
+          border-radius: 8px;
+          padding: 32px;
+          text-align: center;
+        }
+
+        .no-data-icon {
+          font-size: 48px;
+          opacity: 0.3;
+        }
+
+        .no-data-message {
+          font-size: 14px;
+          color: rgba(255, 255, 255, 0.6);
+          max-width: 300px;
+          line-height: 1.5;
+        }
+
+        .no-data-suggestion button {
+          padding: 10px 20px;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          border: none;
+          border-radius: 6px;
+          color: #fff;
+          font-size: 14px;
+          font-weight: 500;
+          cursor: pointer;
+          transition: transform 0.2s;
+        }
+
+        .no-data-suggestion button:hover {
+          transform: translateY(-2px);
         }
 
         .control-label {
