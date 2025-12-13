@@ -2,6 +2,8 @@ export interface StockData {
   symbol: string;
   companyName: string;
   currentPrice: number | null;
+  sector?: string | null;
+  industry?: string | null;
 
   // Fiyat Verileri
   priceData: {
@@ -141,9 +143,274 @@ export interface StockData {
       fundamental: { shortTerm: number; midTerm: number; longTerm: number };
       momentum: { shortTerm: number; midTerm: number; longTerm: number };
     };
+    // Yeni: Al/Sat seviyeleri
+    buyLevels: {
+      strong: number; // Güçlü alım seviyesi
+      moderate: number; // Orta alım seviyesi
+      weak: number; // Zayıf alım seviyesi
+    };
+    sellLevels: {
+      strong: number; // Güçlü satış seviyesi
+      moderate: number; // Orta satış seviyesi
+      weak: number; // Zayıf satış seviyesi
+    };
+  };
+
+  // Birikim/Dağıtım Tespiti (Stealth Accumulation Detection)
+  accumulationSignals?: {
+    overallScore: number; // 0-100: Birikim skoru
+    status: 'strong_accumulation' | 'accumulation' | 'neutral' | 'distribution' | 'strong_distribution';
+    signals: {
+      volumeTrend: {
+        score: number; // 0-100
+        description: string;
+        direction: 'increasing' | 'stable' | 'decreasing';
+        avgVolume5d: number | null;
+        avgVolume20d: number | null;
+      };
+      priceVolumeRelation: {
+        score: number; // 0-100
+        description: string;
+        pattern: 'bullish_accumulation' | 'bearish_distribution' | 'neutral';
+      };
+      foreignOwnership: {
+        score: number; // 0-100
+        description: string;
+        currentPercent: number | null;
+        changeWeekly: number | null;
+        changeMonthly: number | null;
+        trend: 'increasing' | 'stable' | 'decreasing';
+      };
+      institutionalActivity: {
+        score: number; // 0-100
+        description: string;
+        insiderBuying: boolean;
+        largeBlockTrades: boolean;
+      };
+      fundamentalMomentum: {
+        score: number; // 0-100
+        description: string;
+        revenueGrowth: number | null;
+        profitGrowth: number | null;
+        consecutiveGrowthQuarters: number;
+      };
+      technicalAccumulation: {
+        score: number; // 0-100
+        description: string;
+        priceNear52WeekLow: boolean;
+        tightConsolidation: boolean;
+        supportHolding: boolean;
+      };
+    };
+    alerts: string[]; // Önemli birikim uyarıları
+    lastUpdated: Date;
+  };
+
+  // Tarihsel Karşılaştırma
+  historicalComparison?: {
+    avgROE5Y: number | null;
+    avgProfitMargin5Y: number | null;
+    avgRevenueGrowth5Y: number | null;
+    currentVsHistorical: {
+      roeComparison: 'above_avg' | 'at_avg' | 'below_avg';
+      profitComparison: 'above_avg' | 'at_avg' | 'below_avg';
+      revenueComparison: 'above_avg' | 'at_avg' | 'below_avg';
+    };
+    trend: 'improving' | 'stable' | 'declining';
+  };
+
+  // Sektör Karşılaştırması
+  sectorComparison?: {
+    sectorAvgPE: number | null;
+    sectorAvgPB: number | null;
+    sectorAvgROE: number | null;
+    vsSecorPE: 'undervalued' | 'fairly_valued' | 'overvalued';
+    vsSectorPB: 'undervalued' | 'fairly_valued' | 'overvalued';
+    vsSectorROE: 'outperforming' | 'inline' | 'underperforming';
+    percentileInSector: number; // 0-100: Sektördeki yüzdelik dilim
   };
 
   lastUpdated: Date;
+}
+
+// Portfolio Interface
+export interface Portfolio {
+  _id?: string;
+  userId: string;
+  name: string;
+  description?: string;
+  stocks: PortfolioStock[];
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface PortfolioStock {
+  symbol: string;
+  quantity: number;
+  avgCost: number;
+  addedAt: Date;
+  notes?: string;
+}
+
+export interface PortfolioAnalysis {
+  portfolioId: string;
+  totalValue: number;
+  totalCost: number;
+  totalProfitLoss: number;
+  totalProfitLossPercent: number;
+
+  // Sektör dağılımı
+  sectorDistribution: {
+    sector: string;
+    percentage: number;
+    value: number;
+  }[];
+
+  // Risk metrikleri
+  riskMetrics: {
+    diversificationScore: number; // 0-100
+    concentrationRisk: 'low' | 'medium' | 'high';
+    volatilityRisk: 'low' | 'medium' | 'high';
+    liquidityRisk: 'low' | 'medium' | 'high';
+    overallRisk: 'low' | 'medium' | 'high' | 'very_high';
+  };
+
+  // Performans özeti
+  topPerformers: { symbol: string; profitPercent: number }[];
+  worstPerformers: { symbol: string; profitPercent: number }[];
+
+  // Öneriler
+  recommendations: string[];
+  warnings: string[];
+
+  calculatedAt: Date;
+}
+
+// Sektör Eşikleri Ayarları
+export interface SectorThresholds {
+  sectorName: string;
+  peRatioLow: number; // Bu altı ucuz
+  peRatioHigh: number; // Bu üstü pahalı
+  pbRatioLow: number;
+  pbRatioHigh: number;
+  roeGood: number; // Bu üstü iyi
+  roeBad: number; // Bu altı kötü
+  profitMarginGood: number;
+  profitMarginBad: number;
+}
+
+// Varsayılan BIST Sektör Eşikleri
+export const DEFAULT_SECTOR_THRESHOLDS: Record<string, SectorThresholds> = {
+  'Bankacılık': {
+    sectorName: 'Bankacılık',
+    peRatioLow: 4,
+    peRatioHigh: 8,
+    pbRatioLow: 0.4,
+    pbRatioHigh: 1.2,
+    roeGood: 15,
+    roeBad: 8,
+    profitMarginGood: 25,
+    profitMarginBad: 10,
+  },
+  'Holding': {
+    sectorName: 'Holding',
+    peRatioLow: 5,
+    peRatioHigh: 12,
+    pbRatioLow: 0.6,
+    pbRatioHigh: 1.5,
+    roeGood: 12,
+    roeBad: 5,
+    profitMarginGood: 15,
+    profitMarginBad: 5,
+  },
+  'Demir Çelik': {
+    sectorName: 'Demir Çelik',
+    peRatioLow: 4,
+    peRatioHigh: 10,
+    pbRatioLow: 0.5,
+    pbRatioHigh: 1.5,
+    roeGood: 15,
+    roeBad: 5,
+    profitMarginGood: 10,
+    profitMarginBad: 3,
+  },
+  'Havacılık': {
+    sectorName: 'Havacılık',
+    peRatioLow: 6,
+    peRatioHigh: 15,
+    pbRatioLow: 1.0,
+    pbRatioHigh: 3.0,
+    roeGood: 20,
+    roeBad: 10,
+    profitMarginGood: 8,
+    profitMarginBad: 2,
+  },
+  'Telekomünikasyon': {
+    sectorName: 'Telekomünikasyon',
+    peRatioLow: 8,
+    peRatioHigh: 18,
+    pbRatioLow: 0.8,
+    pbRatioHigh: 2.0,
+    roeGood: 12,
+    roeBad: 5,
+    profitMarginGood: 12,
+    profitMarginBad: 5,
+  },
+  'Perakende': {
+    sectorName: 'Perakende',
+    peRatioLow: 10,
+    peRatioHigh: 25,
+    pbRatioLow: 2.0,
+    pbRatioHigh: 6.0,
+    roeGood: 20,
+    roeBad: 10,
+    profitMarginGood: 5,
+    profitMarginBad: 1,
+  },
+  'Enerji': {
+    sectorName: 'Enerji',
+    peRatioLow: 6,
+    peRatioHigh: 14,
+    pbRatioLow: 0.8,
+    pbRatioHigh: 2.0,
+    roeGood: 12,
+    roeBad: 5,
+    profitMarginGood: 10,
+    profitMarginBad: 3,
+  },
+  'Otomotiv': {
+    sectorName: 'Otomotiv',
+    peRatioLow: 5,
+    peRatioHigh: 12,
+    pbRatioLow: 1.0,
+    pbRatioHigh: 3.0,
+    roeGood: 18,
+    roeBad: 8,
+    profitMarginGood: 8,
+    profitMarginBad: 3,
+  },
+  'Teknoloji': {
+    sectorName: 'Teknoloji',
+    peRatioLow: 15,
+    peRatioHigh: 35,
+    pbRatioLow: 3.0,
+    pbRatioHigh: 8.0,
+    roeGood: 20,
+    roeBad: 10,
+    profitMarginGood: 15,
+    profitMarginBad: 5,
+  },
+  'default': {
+    sectorName: 'Genel',
+    peRatioLow: 8,
+    peRatioHigh: 20,
+    pbRatioLow: 1.0,
+    pbRatioHigh: 3.0,
+    roeGood: 15,
+    roeBad: 5,
+    profitMarginGood: 10,
+    profitMarginBad: 3,
+  },
 }
 
 export interface DataSourceHealth {

@@ -6,10 +6,37 @@ import finnhubService from './finnhub.service';
 import fmpService from './fmp.service';
 import stockDbService from './stockDb.service';
 import priceTargetCalculator from './priceTargetCalculator.service';
+import accumulationDetector from './accumulationDetector.service';
 import { DataCategory } from '../models/Stock.model';
 import cache from '../utils/cache';
 import logger from '../utils/logger';
-import { StockData } from '../types';
+import { StockData, DEFAULT_SECTOR_THRESHOLDS, SectorThresholds } from '../types';
+
+// BIST hisselerini sektörlerine mapping
+const STOCK_SECTOR_MAP: Record<string, string> = {
+  // Bankacılık
+  'GARAN': 'Bankacılık', 'AKBNK': 'Bankacılık', 'YKBNK': 'Bankacılık', 'VAKBN': 'Bankacılık',
+  'HALKB': 'Bankacılık', 'ISCTR': 'Bankacılık', 'TSKB': 'Bankacılık', 'SKBNK': 'Bankacılık',
+  // Holding
+  'SAHOL': 'Holding', 'KCHOL': 'Holding', 'DOHOL': 'Holding', 'AGHOL': 'Holding', 'GLYHO': 'Holding',
+  // Havacılık
+  'THYAO': 'Havacılık', 'PGSUS': 'Havacılık', 'TAVHL': 'Havacılık', 'CLEBI': 'Havacılık',
+  // Telekomünikasyon
+  'TCELL': 'Telekomünikasyon', 'TTKOM': 'Telekomünikasyon',
+  // Demir Çelik
+  'EREGL': 'Demir Çelik', 'KRDMD': 'Demir Çelik', 'ISDMR': 'Demir Çelik',
+  // Enerji
+  'TUPRS': 'Enerji', 'PETKM': 'Enerji', 'AYGAZ': 'Enerji', 'ENJSA': 'Enerji',
+  'AKENR': 'Enerji', 'AYDEM': 'Enerji', 'ODAS': 'Enerji',
+  // Otomotiv
+  'TOASO': 'Otomotiv', 'FROTO': 'Otomotiv', 'OTKAR': 'Otomotiv', 'DOAS': 'Otomotiv',
+  // Perakende
+  'BIMAS': 'Perakende', 'MGROS': 'Perakende', 'SOKM': 'Perakende', 'MAVI': 'Perakende',
+  // Teknoloji
+  'ASELS': 'Teknoloji', 'LOGO': 'Teknoloji', 'NETAS': 'Teknoloji', 'ARENA': 'Teknoloji',
+  // Beyaz Eşya/Elektronik
+  'ARCLK': 'Teknoloji', 'VESTL': 'Teknoloji', 'VESBE': 'Teknoloji',
+};
 
 class DataAggregatorService {
   /**
@@ -71,13 +98,22 @@ class DataAggregatorService {
       // 6. Ek hesaplamalar yap
       this.enrichData(aggregatedData);
 
-      // 7. Akıllı analiz yap
+      // 7. Sektör bilgisini ekle
+      this.assignSector(aggregatedData);
+
+      // 8. Akıllı analiz yap (sektör bazlı eşiklerle)
       this.performSmartAnalysis(aggregatedData);
 
-      // 8. AI fiyat hedefleri hesapla (smart analysis sonrası)
+      // 9. AI fiyat hedefleri hesapla (smart analysis sonrası)
       const priceTargets = priceTargetCalculator.calculatePriceTargets(aggregatedData);
       if (priceTargets) {
         aggregatedData.priceTargets = priceTargets;
+      }
+
+      // 10. Birikim/Dağıtım tespiti yap
+      const accumulationSignals = await accumulationDetector.detectAccumulation(aggregatedData);
+      if (accumulationSignals) {
+        aggregatedData.accumulationSignals = accumulationSignals;
       }
 
       // 9. MongoDB'ye kaydet (hangi kategoriler güncellendi?)
@@ -129,6 +165,8 @@ class DataAggregatorService {
       symbol: symbol.toUpperCase(),
       companyName: twelve.companyName || finnhub.companyName || yahoo.companyName || investing.companyName || db?.companyName || symbol,
       currentPrice: twelve.currentPrice || finnhub.currentPrice || yahoo.currentPrice || investing.priceData?.currentPrice || db?.currentPrice || null,
+      sector: (yahoo as any).sector || db?.sector || STOCK_SECTOR_MAP[symbol.toUpperCase()] || null,
+      industry: (yahoo as any).industry || db?.industry || null,
 
       priceData: {
         currentPrice: twelve.priceData?.currentPrice || finnhub.priceData?.currentPrice || yahoo.priceData?.currentPrice || investing.priceData?.currentPrice || db?.priceData?.currentPrice || null,
@@ -348,7 +386,24 @@ class DataAggregatorService {
   }
 
   /**
-   * Akıllı analiz ve öneriler oluşturur
+   * Hisseye sektör atar (Yahoo'dan gelmezse mapping kullanır)
+   */
+  private assignSector(data: StockData): void {
+    if (!data.sector) {
+      data.sector = STOCK_SECTOR_MAP[data.symbol] || null;
+    }
+  }
+
+  /**
+   * Sektör eşiklerini alır
+   */
+  private getSectorThresholds(sector: string | null | undefined): SectorThresholds {
+    if (!sector) return DEFAULT_SECTOR_THRESHOLDS['default'];
+    return DEFAULT_SECTOR_THRESHOLDS[sector] || DEFAULT_SECTOR_THRESHOLDS['default'];
+  }
+
+  /**
+   * Akıllı analiz ve öneriler oluşturur (SEKTÖR BAZLI EŞİKLERLE)
    */
   private performSmartAnalysis(data: StockData): void {
     const strengths: string[] = [];
@@ -356,118 +411,166 @@ class DataAggregatorService {
     const warnings: string[] = [];
     const recommendations: string[] = [];
 
+    // Sektör bazlı eşikleri al
+    const thresholds = this.getSectorThresholds(data.sector);
+    const sectorName = thresholds.sectorName;
+
     let valuationScore = 50;
     let profitabilityScore = 50;
     let liquidityScore = 50;
     let leverageScore = 50;
 
-    // ========== DEĞERLEME ANALİZİ ==========
-    // F/K Oranı analizi
-    if (data.fundamentals.fk) {
-      if (data.fundamentals.fk < 10) {
-        valuationScore += 20;
-        strengths.push(`F/K oranı çok düşük (${data.fundamentals.fk.toFixed(2)}), hisse ucuz görünüyor`);
-      } else if (data.fundamentals.fk < 15) {
+    // Veri eksikliği cezası (yeni: veri yoksa 50 değil, biraz düşük başla)
+    let dataQualityPenalty = 0;
+
+    // ========== DEĞERLEME ANALİZİ (SEKTÖR BAZLI) ==========
+    if (data.fundamentals.fk !== null && data.fundamentals.fk !== undefined) {
+      // Negatif F/K = şirket zarar ediyor
+      if (data.fundamentals.fk < 0) {
+        valuationScore -= 30;
+        weaknesses.push(`F/K negatif (${data.fundamentals.fk.toFixed(2)}), şirket zarar ediyor`);
+        warnings.push('⚠️ NEGATİF F/K - Şirket zarar ediyor!');
+      } else if (data.fundamentals.fk < thresholds.peRatioLow) {
+        valuationScore += 25;
+        strengths.push(`F/K oranı sektör ortalamasının altında (${data.fundamentals.fk.toFixed(2)} < ${thresholds.peRatioLow}), ${sectorName} sektöründe ucuz`);
+      } else if (data.fundamentals.fk <= thresholds.peRatioHigh) {
         valuationScore += 10;
-        strengths.push(`F/K oranı makul seviyede (${data.fundamentals.fk.toFixed(2)})`);
-      } else if (data.fundamentals.fk > 25) {
-        valuationScore -= 15;
-        weaknesses.push(`F/K oranı yüksek (${data.fundamentals.fk.toFixed(2)}), hisse pahalı olabilir`);
+        strengths.push(`F/K oranı ${sectorName} sektörü için makul (${data.fundamentals.fk.toFixed(2)})`);
+      } else {
+        valuationScore -= 20;
+        weaknesses.push(`F/K oranı sektör ortalamasının üstünde (${data.fundamentals.fk.toFixed(2)} > ${thresholds.peRatioHigh}), ${sectorName} sektöründe pahalı`);
       }
+    } else {
+      dataQualityPenalty += 5;
     }
 
-    // PD/DD analizi
-    if (data.fundamentals.pdDD) {
-      if (data.fundamentals.pdDD < 1) {
-        valuationScore += 20;
-        strengths.push(`PD/DD oranı 1'in altında (${data.fundamentals.pdDD.toFixed(2)}), defter değerinin altında işlem görüyor`);
-      } else if (data.fundamentals.pdDD < 2) {
+    // PD/DD analizi (sektör bazlı)
+    if (data.fundamentals.pdDD !== null && data.fundamentals.pdDD !== undefined) {
+      if (data.fundamentals.pdDD < 0) {
+        valuationScore -= 25;
+        warnings.push('⚠️ Negatif PD/DD - Öz sermaye negatif olabilir!');
+      } else if (data.fundamentals.pdDD < thresholds.pbRatioLow) {
+        valuationScore += 25;
+        strengths.push(`PD/DD çok düşük (${data.fundamentals.pdDD.toFixed(2)} < ${thresholds.pbRatioLow}), defter değerinin altında işlem görüyor`);
+      } else if (data.fundamentals.pdDD <= thresholds.pbRatioHigh) {
         valuationScore += 10;
-        strengths.push(`PD/DD oranı makul seviyede (${data.fundamentals.pdDD.toFixed(2)})`);
-      } else if (data.fundamentals.pdDD > 3) {
+        strengths.push(`PD/DD ${sectorName} sektörü için makul (${data.fundamentals.pdDD.toFixed(2)})`);
+      } else {
         valuationScore -= 15;
-        weaknesses.push(`PD/DD oranı yüksek (${data.fundamentals.pdDD.toFixed(2)})`);
+        weaknesses.push(`PD/DD yüksek (${data.fundamentals.pdDD.toFixed(2)} > ${thresholds.pbRatioHigh})`);
       }
+    } else {
+      dataQualityPenalty += 5;
     }
 
-    // ========== KARLILIK ANALİZİ ==========
-    // ROE analizi
-    if (data.fundamentals.roe) {
-      if (data.fundamentals.roe > 20) {
-        profitabilityScore += 25;
-        strengths.push(`ROE çok yüksek (${data.fundamentals.roe.toFixed(1)}%), şirket öz sermayesini çok verimli kullanıyor`);
-      } else if (data.fundamentals.roe > 15) {
-        profitabilityScore += 15;
-        strengths.push(`ROE güçlü seviyede (${data.fundamentals.roe.toFixed(1)}%)`);
-      } else if (data.fundamentals.roe < 5) {
+    // ========== KARLILIK ANALİZİ (DÜZELTME: ROE < 0 önce kontrol) ==========
+    if (data.fundamentals.roe !== null && data.fundamentals.roe !== undefined) {
+      // ÖNEMLİ: Negatif ROE kontrolü EN ÖNCE!
+      if (data.fundamentals.roe < 0) {
+        profitabilityScore -= 35;
+        weaknesses.push(`ROE negatif (${data.fundamentals.roe.toFixed(1)}%), şirket zarar ediyor`);
+        warnings.push('🔴 NEGATİF KARLILIK - Şirket zarar ediyor!');
+      } else if (data.fundamentals.roe >= thresholds.roeGood) {
+        profitabilityScore += 30;
+        strengths.push(`ROE çok iyi (${data.fundamentals.roe.toFixed(1)}% >= ${thresholds.roeGood}%), ${sectorName} sektöründe üst düzey`);
+      } else if (data.fundamentals.roe >= thresholds.roeBad) {
+        profitabilityScore += 10;
+        strengths.push(`ROE makul (${data.fundamentals.roe.toFixed(1)}%)`);
+      } else {
         profitabilityScore -= 20;
-        weaknesses.push(`ROE düşük (${data.fundamentals.roe.toFixed(1)}%), karlılık zayıf`);
+        weaknesses.push(`ROE düşük (${data.fundamentals.roe.toFixed(1)}% < ${thresholds.roeBad}%), ${sectorName} sektörü ortalamasının altında`);
         warnings.push('⚠️ Düşük öz sermaye karlılığı');
-      } else if (data.fundamentals.roe < 0) {
-        profitabilityScore -= 30;
-        weaknesses.push('Şirket zarar ediyor');
-        warnings.push('⚠️ NEGATİF KARLILIK - Şirket zarar ediyor!');
       }
+    } else {
+      dataQualityPenalty += 5;
     }
 
-    // Net Kar Marjı analizi
-    if (data.financials.profitability) {
-      if (data.financials.profitability > 20) {
-        profitabilityScore += 20;
-        strengths.push(`Net kar marjı yüksek (${data.financials.profitability.toFixed(1)}%)`);
-      } else if (data.financials.profitability < 5) {
+    // Net Kar Marjı analizi (sektör bazlı)
+    if (data.financials.profitability !== null && data.financials.profitability !== undefined) {
+      if (data.financials.profitability < 0) {
+        profitabilityScore -= 25;
+        weaknesses.push(`Net kar marjı negatif (${data.financials.profitability.toFixed(1)}%)`);
+      } else if (data.financials.profitability >= thresholds.profitMarginGood) {
+        profitabilityScore += 25;
+        strengths.push(`Net kar marjı yüksek (${data.financials.profitability.toFixed(1)}% >= ${thresholds.profitMarginGood}%)`);
+      } else if (data.financials.profitability >= thresholds.profitMarginBad) {
+        profitabilityScore += 5;
+      } else {
         profitabilityScore -= 15;
-        weaknesses.push(`Net kar marjı düşük (${data.financials.profitability.toFixed(1)}%)`);
+        weaknesses.push(`Net kar marjı düşük (${data.financials.profitability.toFixed(1)}% < ${thresholds.profitMarginBad}%)`);
       }
+    } else {
+      dataQualityPenalty += 5;
     }
 
     // ========== LİKİDİTE ANALİZİ ==========
-    // Cari Oran analizi
-    if (data.liquidity.currentRatio) {
-      if (data.liquidity.currentRatio > 2) {
-        liquidityScore += 20;
+    if (data.liquidity.currentRatio !== null && data.liquidity.currentRatio !== undefined) {
+      if (data.liquidity.currentRatio >= 2) {
+        liquidityScore += 25;
         strengths.push(`Cari oran güçlü (${data.liquidity.currentRatio.toFixed(2)}), kısa vadeli borçları rahatça karşılayabilir`);
-      } else if (data.liquidity.currentRatio > 1.5) {
-        liquidityScore += 10;
+      } else if (data.liquidity.currentRatio >= 1.5) {
+        liquidityScore += 15;
         strengths.push(`Cari oran sağlıklı (${data.liquidity.currentRatio.toFixed(2)})`);
-      } else if (data.liquidity.currentRatio < 1) {
-        liquidityScore -= 25;
+      } else if (data.liquidity.currentRatio >= 1) {
+        liquidityScore += 5;
+      } else {
+        liquidityScore -= 30;
         weaknesses.push(`Cari oran zayıf (${data.liquidity.currentRatio.toFixed(2)}), likidite problemi olabilir`);
         warnings.push('⚠️ LİKİDİTE RİSKİ - Cari oran 1\'in altında!');
       }
+    } else {
+      dataQualityPenalty += 3;
     }
 
     // İşletme Sermayesi analizi
-    if (data.financials.workingCapital && data.financials.workingCapital < 0) {
-      liquidityScore -= 20;
-      weaknesses.push('İşletme sermayesi negatif');
-      warnings.push('⚠️ Negatif işletme sermayesi tespit edildi');
+    if (data.financials.workingCapital !== null && data.financials.workingCapital !== undefined) {
+      if (data.financials.workingCapital < 0) {
+        liquidityScore -= 25;
+        weaknesses.push('İşletme sermayesi negatif');
+        warnings.push('⚠️ Negatif işletme sermayesi tespit edildi');
+      } else if (data.financials.workingCapital > 0 && data.financials.currentAssets) {
+        const wcRatio = data.financials.workingCapital / data.financials.currentAssets;
+        if (wcRatio > 0.3) {
+          liquidityScore += 10;
+        }
+      }
     }
 
     // ========== BORÇLULUK ANALİZİ ==========
-    // Borç/Öz Sermaye analizi
-    if (data.leverage.debtToEquity) {
-      if (data.leverage.debtToEquity < 0.5) {
-        leverageScore += 25;
-        strengths.push(`Borç/Öz Sermaye oranı düşük (${data.leverage.debtToEquity.toFixed(2)}), borç yükü hafif`);
+    if (data.leverage.debtToEquity !== null && data.leverage.debtToEquity !== undefined) {
+      if (data.leverage.debtToEquity < 0) {
+        // Negatif öz sermaye
+        leverageScore -= 30;
+        warnings.push('⚠️ Negatif öz sermaye - Borçlar varlıkları aşmış olabilir!');
+      } else if (data.leverage.debtToEquity < 0.5) {
+        leverageScore += 30;
+        strengths.push(`Borç/Öz Sermaye çok düşük (${data.leverage.debtToEquity.toFixed(2)}), borç yükü hafif`);
       } else if (data.leverage.debtToEquity < 1) {
-        leverageScore += 10;
-        strengths.push(`Borç/Öz Sermaye oranı sağlıklı (${data.leverage.debtToEquity.toFixed(2)})`);
-      } else if (data.leverage.debtToEquity > 2) {
-        leverageScore -= 25;
-        weaknesses.push(`Borç/Öz Sermaye oranı yüksek (${data.leverage.debtToEquity.toFixed(2)}), yüksek borç yükü`);
-        warnings.push('⚠️ YÜKSEK BORÇ YÜKÜ tespit edildi!');
-      } else if (data.leverage.debtToEquity > 1.5) {
+        leverageScore += 15;
+        strengths.push(`Borç/Öz Sermaye sağlıklı (${data.leverage.debtToEquity.toFixed(2)})`);
+      } else if (data.leverage.debtToEquity < 1.5) {
+        leverageScore += 0;
+      } else if (data.leverage.debtToEquity < 2) {
         leverageScore -= 15;
-        weaknesses.push(`Borç/Öz Sermaye oranı yüksek (${data.leverage.debtToEquity.toFixed(2)})`);
+        weaknesses.push(`Borç/Öz Sermaye yüksek (${data.leverage.debtToEquity.toFixed(2)})`);
+      } else {
+        leverageScore -= 30;
+        weaknesses.push(`Borç/Öz Sermaye çok yüksek (${data.leverage.debtToEquity.toFixed(2)}), ciddi borç yükü`);
+        warnings.push('🔴 YÜKSEK BORÇ YÜKÜ tespit edildi!');
       }
+    } else {
+      dataQualityPenalty += 3;
     }
 
     // Kısa Vadeli Borç Oranı yüksekse uyarı
     if (data.leverage.shortTermDebtRatio && data.leverage.shortTermDebtRatio > 70) {
-      leverageScore -= 10;
-      warnings.push(`⚠️ Toplam borcun %${data.leverage.shortTermDebtRatio.toFixed(0)}'ü kısa vadeli!`);
+      leverageScore -= 15;
+      warnings.push(`⚠️ Toplam borcun %${data.leverage.shortTermDebtRatio.toFixed(0)}'ü kısa vadeli - Yeniden finansman riski!`);
     }
+
+    // ========== VERİ KALİTESİ CEZASI ==========
+    valuationScore -= dataQualityPenalty;
+    profitabilityScore -= dataQualityPenalty;
 
     // ========== GENEL DEĞERLENDİRME ==========
     // Skorları normalize et (0-100 arası)
@@ -486,10 +589,10 @@ class DataAggregatorService {
 
     // Rating belirle
     let rating: 'Strong Buy' | 'Buy' | 'Hold' | 'Sell' | 'Strong Sell';
-    if (overallScore >= 80) {
+    if (overallScore >= 75) {
       rating = 'Strong Buy';
       recommendations.push('📈 GÜÇLÜ AL - Hisse temel analizlere göre çok çekici görünüyor');
-    } else if (overallScore >= 65) {
+    } else if (overallScore >= 60) {
       rating = 'Buy';
       recommendations.push('✅ AL - Hisse alım için uygun görünüyor');
     } else if (overallScore >= 45) {
@@ -503,11 +606,16 @@ class DataAggregatorService {
       recommendations.push('🔴 GÜÇLÜ SAT - Hisse ciddi riskler taşıyor');
     }
 
-    // Öneriler ekle
-    if (valuationScore > 70) {
+    // Sektör bilgisi ekle
+    if (data.sector) {
+      recommendations.push(`📊 Sektör: ${data.sector} - Değerlendirme sektörel eşiklere göre yapıldı`);
+    }
+
+    // Detaylı öneriler
+    if (valuationScore >= 70) {
       recommendations.push('💎 Değerleme açısından çekici, fiyat makul seviyelerde');
     }
-    if (profitabilityScore > 70) {
+    if (profitabilityScore >= 70) {
       recommendations.push('💰 Karlılık metrikleri güçlü, şirket para kazanıyor');
     }
     if (liquidityScore < 40) {
@@ -515,6 +623,11 @@ class DataAggregatorService {
     }
     if (leverageScore < 40) {
       recommendations.push('📊 Borç yükü yüksek, faiz oranı artışları riski yaratabilir');
+    }
+
+    // Veri eksikliği uyarısı
+    if (dataQualityPenalty > 10) {
+      warnings.push('⚠️ Bazı kritik veriler eksik, analiz sınırlı doğrulukta');
     }
 
     // Veriyi güncelle

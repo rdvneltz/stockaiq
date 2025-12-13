@@ -74,34 +74,40 @@ class YahooFinanceService {
           shares: quoteSummary?.sharesOutstanding || null,
           paidCapital: null,
           eps: null,
-          roe: null,
-          roa: null,
+          roe: quoteSummary?.returnOnEquity ? quoteSummary.returnOnEquity * 100 : null, // Yüzdeye çevir
+          roa: quoteSummary?.returnOnAssets ? quoteSummary.returnOnAssets * 100 : null, // Yüzdeye çevir
         },
 
         financials: {
           period,
           revenue: quoteSummary?.totalRevenue || null,
-          grossProfit: quoteSummary?.grossProfit || null,
+          grossProfit: quoteSummary?.grossProfit || null, // DÜZELTME: Artık doğru değer geliyor
           netIncome: quoteSummary?.netIncome || null,
-          profitability: this.calculateProfitability(quoteSummary?.netIncome, quoteSummary?.totalRevenue),
-          equity: quoteSummary?.totalStockholderEquity || null,
-          currentAssets: quoteSummary?.totalCurrentAssets || null,
-          fixedAssets: null,
-          totalAssets: quoteSummary?.totalAssets || null,
-          shortTermLiabilities: quoteSummary?.totalCurrentLiabilities || null,
-          longTermLiabilities: null, // Yahoo Finance'de bu alan yok
-          shortTermBankLoans: null,
-          longTermBankLoans: null,
-          tradeReceivables: null,
-          financialInvestments: null,
+          profitability: quoteSummary?.profitMargins ? quoteSummary.profitMargins * 100 : null, // Yüzdeye çevir
+          grossProfitMargin: quoteSummary?.grossMargins ? quoteSummary.grossMargins * 100 : null, // Yüzdeye çevir
+          equity: quoteSummary?.totalStockholderEquity || null, // DÜZELTME: Artık doğru değer
+          currentAssets: quoteSummary?.totalCurrentAssets || null, // DÜZELTME: Artık doğru değer
+          fixedAssets: null, // enrichData'da hesaplanacak
+          totalAssets: quoteSummary?.totalAssets || null, // DÜZELTME: Artık doğru değer
+          shortTermLiabilities: quoteSummary?.totalCurrentLiabilities || null, // DÜZELTME: Artık doğru değer
+          longTermLiabilities: quoteSummary?.totalLiabilities && quoteSummary?.totalCurrentLiabilities
+            ? quoteSummary.totalLiabilities - quoteSummary.totalCurrentLiabilities
+            : null,
+          shortTermBankLoans: quoteSummary?.shortTermDebt || null,
+          longTermBankLoans: quoteSummary?.longTermDebt || null,
+          tradeReceivables: quoteSummary?.receivables || null,
+          financialInvestments: quoteSummary?.cash || null,
           investmentProperty: null,
           prepaidExpenses: null,
           deferredTax: null,
-          totalDebt: null,
-          netDebt: null,
-          workingCapital: null,
-          grossProfitMargin: null,
+          totalDebt: quoteSummary?.totalLiabilities || null,
+          netDebt: null, // enrichData'da hesaplanacak
+          workingCapital: null, // enrichData'da hesaplanacak
         },
+
+        // Sektör ve endüstri bilgisi
+        sector: quoteSummary?.sector || null,
+        industry: quoteSummary?.industry || null,
 
         analysis: {
           domesticSalesRatio: null,
@@ -141,10 +147,14 @@ class YahooFinanceService {
   private async getQuoteSummary(symbol: string) {
     try {
       const result = await yahooFinance.quoteSummary(symbol, {
-        modules: ['price', 'summaryDetail', 'defaultKeyStatistics', 'financialData'],
+        modules: ['price', 'summaryDetail', 'defaultKeyStatistics', 'financialData', 'balanceSheetHistory', 'incomeStatementHistory', 'assetProfile'],
       });
 
       const mostRecentQuarter = result.defaultKeyStatistics?.mostRecentQuarter;
+
+      // Balance sheet verilerini al (en son dönem)
+      const balanceSheet = result.balanceSheetHistory?.balanceSheetStatements?.[0];
+      const incomeStatement = result.incomeStatementHistory?.incomeStatementHistory?.[0];
 
       return {
         marketCap: result.price?.marketCap,
@@ -154,15 +164,37 @@ class YahooFinanceService {
         enterpriseToEbitda: result.defaultKeyStatistics?.enterpriseToEbitda,
         sharesOutstanding: result.defaultKeyStatistics?.sharesOutstanding,
         mostRecentQuarter: mostRecentQuarter ? new Date(mostRecentQuarter).toISOString() : null,
-        totalRevenue: result.financialData?.totalRevenue,
-        grossProfit: result.financialData?.grossMargins,
-        netIncome: result.defaultKeyStatistics?.netIncomeToCommon,
-        totalStockholderEquity: result.financialData?.totalCash,
-        totalCurrentAssets: result.financialData?.totalCash,
-        totalAssets: result.financialData?.totalCash,
-        totalCurrentLiabilities: result.financialData?.totalDebt,
-        longTermDebt: null, // Yahoo Finance'de bu alan yok
+
+        // Income Statement verileri (DÜZELTME: Doğru alanlardan al)
+        totalRevenue: incomeStatement?.totalRevenue || result.financialData?.totalRevenue,
+        grossProfit: incomeStatement?.grossProfit || null, // DÜZELTME: grossMargins DEĞİL, grossProfit
+        netIncome: incomeStatement?.netIncome || result.defaultKeyStatistics?.netIncomeToCommon,
+        operatingIncome: incomeStatement?.operatingIncome || null,
+        ebitda: result.financialData?.ebitda || incomeStatement?.ebit,
+
+        // Balance Sheet verileri (DÜZELTME: Doğru alanlardan al)
+        totalStockholderEquity: balanceSheet?.totalStockholderEquity || null, // DÜZELTME: totalCash DEĞİL
+        totalCurrentAssets: balanceSheet?.totalCurrentAssets || null, // DÜZELTME: totalCash DEĞİL
+        totalAssets: balanceSheet?.totalAssets || null, // DÜZELTME: totalCash DEĞİL
+        totalCurrentLiabilities: balanceSheet?.totalCurrentLiabilities || null, // DÜZELTME: totalDebt DEĞİL
+        totalLiabilities: balanceSheet?.totalLiab || null,
+        longTermDebt: balanceSheet?.longTermDebt || null,
+        shortTermDebt: balanceSheet?.shortLongTermDebt || null,
+        cash: balanceSheet?.cash || result.financialData?.totalCash,
+        inventory: balanceSheet?.inventory || null,
+        receivables: balanceSheet?.netReceivables || null,
+
+        // Diğer veriler
         dividendYield: result.summaryDetail?.dividendYield,
+        profitMargins: result.financialData?.profitMargins,
+        grossMargins: result.financialData?.grossMargins,
+        operatingMargins: result.financialData?.operatingMargins,
+        returnOnEquity: result.financialData?.returnOnEquity,
+        returnOnAssets: result.financialData?.returnOnAssets,
+
+        // Şirket bilgileri
+        sector: result.assetProfile?.sector || null,
+        industry: result.assetProfile?.industry || null,
       };
     } catch (error) {
       logger.warn(`Yahoo Finance quoteSummary error: ${symbol}`, error);
