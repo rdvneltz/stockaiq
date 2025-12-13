@@ -1,10 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Plus, TrendingUp, TrendingDown, RefreshCw, Star, Filter, Clock } from 'lucide-react';
 import { stockApi } from '../services/api';
 import { StockData } from '../types';
 import { formatCurrency, formatPercent, getChangeColor, formatTimeAgo } from '../utils/formatters';
 import StockChart from '../components/StockChart';
 import { useAuth } from '../context/AuthContext';
+
+// Global cache that persists between page navigations
+const globalStockCache = new Map<string, StockData>();
+let lastFetchTime: number = 0;
+const CACHE_DURATION = 30000; // 30 seconds
 
 // Complete BIST100 list (100 unique stocks - duplicates removed)
 const BIST100_STOCKS = Array.from(new Set([
@@ -26,8 +31,8 @@ const BIST100_STOCKS = Array.from(new Set([
 const Dashboard: React.FC = () => {
   const { user, updateFavorites } = useAuth();
   const [stocks, setStocks] = useState<StockData[]>([]);
-  const [stockCache, setStockCache] = useState<Map<string, StockData>>(new Map());
   const [watchlist, setWatchlist] = useState<string[]>([]);
+  const isMounted = useRef(true);
   const [loading, setLoading] = useState(true);
   const [selectedStock, setSelectedStock] = useState<StockData | null>(null);
   const [newSymbol, setNewSymbol] = useState('');
@@ -50,46 +55,62 @@ const Dashboard: React.FC = () => {
     const newWatchlist = viewMode === 'favorites' ? favorites : BIST100_STOCKS;
     setWatchlist(newWatchlist);
 
-    // Cache'den hemen göster, sonra güncelle
+    // Önce global cache'den göster (sayfa geçişlerinde hızlı yükleme)
     const cachedStocks = newWatchlist
-      .map(symbol => stockCache.get(symbol))
+      .map(symbol => globalStockCache.get(symbol))
       .filter((stock): stock is StockData => stock !== undefined);
 
     if (cachedStocks.length > 0) {
       setStocks(cachedStocks);
       setLoading(false);
     }
-  }, [viewMode, favorites, stockCache]);
+  }, [viewMode, favorites]);
 
   useEffect(() => {
+    isMounted.current = true;
     if (watchlist.length > 0) {
       loadStocks();
-      // Her 30 saniyede bir güncelle (daha az sıklıkla)
+      // Her 30 saniyede bir güncelle
       const interval = setInterval(loadStocks, 30000);
-      return () => clearInterval(interval);
+      return () => {
+        isMounted.current = false;
+        clearInterval(interval);
+      };
     }
+    return () => { isMounted.current = false; };
   }, [watchlist]);
 
   const loadStocks = async () => {
-    // Sadece cache'de olmayanları çek
-    const uncachedSymbols = watchlist.filter(symbol => !stockCache.has(symbol));
+    const now = Date.now();
+    const cacheAge = now - lastFetchTime;
 
-    if (uncachedSymbols.length === 0 && stockCache.size > 0) {
-      // Hepsi cache'de, sadece görüntüle
-      const cachedStocks = watchlist
-        .map(symbol => stockCache.get(symbol))
-        .filter((stock): stock is StockData => stock !== undefined);
-      setStocks(cachedStocks);
-      setLoading(false);
+    // Cache yeterince taze ve veriler varsa, sadece cache'den göster
+    const cachedStocks = watchlist
+      .map(symbol => globalStockCache.get(symbol))
+      .filter((stock): stock is StockData => stock !== undefined);
+
+    if (cacheAge < CACHE_DURATION && cachedStocks.length >= watchlist.length * 0.8) {
+      // Cache hala taze, sadece göster
+      if (isMounted.current) {
+        setStocks(cachedStocks);
+        setLoading(false);
+      }
       return;
     }
 
-    setLoading(true);
+    // Sadece cache'de olmayan veya eski olanları çek
+    const uncachedSymbols = watchlist.filter(symbol => !globalStockCache.has(symbol));
+    const symbolsToFetch = uncachedSymbols.length > 0 ? uncachedSymbols : watchlist;
+
+    // Eğer hiç veri yoksa loading göster, yoksa arka planda güncelle
+    if (cachedStocks.length === 0) {
+      setLoading(true);
+    }
+
     try {
       // Batch'ler halinde çek (10'luk gruplar)
       const batchSize = 10;
       const batches: string[][] = [];
-      const symbolsToFetch = uncachedSymbols.length > 0 ? uncachedSymbols : watchlist;
 
       for (let i = 0; i < symbolsToFetch.length; i += batchSize) {
         batches.push(symbolsToFetch.slice(i, i + batchSize));
@@ -99,21 +120,20 @@ const Dashboard: React.FC = () => {
       const batchPromises = batches.map(batch => stockApi.getMultipleStocks(batch));
       const batchResults = await Promise.allSettled(batchPromises);
 
-      // Başarılı sonuçları birleştir ve cache'e ekle
+      // Başarılı sonuçları birleştir ve global cache'e ekle
       const newStocks = batchResults
         .filter((result): result is PromiseFulfilledResult<StockData[]> => result.status === 'fulfilled')
         .flatMap(result => result.value);
 
-      // Cache'i güncelle
-      const newCache = new Map(stockCache);
+      // Global cache'i güncelle
       newStocks.forEach(stock => {
-        newCache.set(stock.symbol, stock);
+        globalStockCache.set(stock.symbol, stock);
       });
-      setStockCache(newCache);
+      lastFetchTime = Date.now();
 
       // Watchlist'teki tüm hisseleri göster (cache + yeni)
       const allStocks = watchlist
-        .map(symbol => newCache.get(symbol))
+        .map(symbol => globalStockCache.get(symbol))
         .filter((stock): stock is StockData => stock !== undefined);
 
       // Duplicate'leri kaldır (symbol bazında unique)
@@ -121,11 +141,15 @@ const Dashboard: React.FC = () => {
         new Map(allStocks.map(stock => [stock.symbol, stock])).values()
       );
 
-      setStocks(uniqueStocks);
+      if (isMounted.current) {
+        setStocks(uniqueStocks);
+      }
     } catch (error) {
       console.error('Failed to load stocks:', error);
     } finally {
-      setLoading(false);
+      if (isMounted.current) {
+        setLoading(false);
+      }
     }
   };
 
