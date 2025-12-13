@@ -1,7 +1,8 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
-import { TrendingUp, Settings as SettingsIcon, LogOut, Shield } from 'lucide-react';
+import { TrendingUp, Settings as SettingsIcon, LogOut, Shield, PieChart } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
+import Portfolio from './pages/Portfolio';
 import Settings from './pages/Settings';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -85,6 +86,14 @@ const AppContent: React.FC = () => {
             }
           />
           <Route
+            path="/portfolio"
+            element={
+              <ProtectedRoute>
+                <Portfolio />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/settings"
             element={
               <ProtectedRoute>
@@ -164,6 +173,13 @@ const Navbar: React.FC = () => {
           >
             <TrendingUp size={18} />
             Piyasa
+          </Link>
+          <Link
+            to="/portfolio"
+            className={`nav-link ${location.pathname === '/portfolio' ? 'active' : ''}`}
+          >
+            <PieChart size={18} />
+            Portfoy
           </Link>
           {user?.role === 'admin' && (
             <Link
