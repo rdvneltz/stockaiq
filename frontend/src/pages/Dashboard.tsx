@@ -10,7 +10,8 @@ import { BIST_INDEXES, BIST30_STOCKS, BIST50_STOCKS, BIST100_STOCKS, ALL_BIST_UN
 // Global cache that persists between page navigations
 const globalStockCache = new Map<string, StockData>();
 let lastFetchTime: number = 0;
-const CACHE_DURATION = 30000; // 30 seconds
+const CACHE_DURATION = 60000; // 60 seconds for background refresh
+const CACHE_DISPLAY_DURATION = 300000; // 5 minutes for displaying cached data
 
 // Index types
 type BistIndex = 'BIST30' | 'BIST50' | 'BIST100' | 'ALL';
@@ -91,17 +92,27 @@ const Dashboard: React.FC = () => {
       .map(symbol => globalStockCache.get(symbol))
       .filter((stock): stock is StockData => stock !== undefined);
 
-    if (cacheAge < CACHE_DURATION && cachedStocks.length >= watchlist.length * 0.8) {
-      // Cache hala taze, sadece göster
+    // Eğer cache'de yeterli veri varsa, önce göster
+    if (cachedStocks.length >= watchlist.length * 0.5) {
       if (isMounted.current) {
         setStocks(cachedStocks);
         setLoadingProgress({ loaded: cachedStocks.length, total: watchlist.length });
         setLoading(false);
       }
-      return;
+
+      // Cache hala taze ise, refresh yapma
+      if (cacheAge < CACHE_DURATION) {
+        return;
+      }
+
+      // Cache eskiyse ama görüntülenebilir sürede ise, return ve sonraki interval'de güncelle
+      if (cacheAge < CACHE_DISPLAY_DURATION) {
+        // Cache görüntülenebilir durumda, sonraki interval'de güncellenecek
+        return;
+      }
     }
 
-    // Sadece cache'de olmayan veya eski olanları çek
+    // Sadece cache'de olmayan sembolleri çek
     const uncachedSymbols = watchlist.filter(symbol => !globalStockCache.has(symbol));
     const symbolsToFetch = uncachedSymbols.length > 0 ? uncachedSymbols : watchlist;
 

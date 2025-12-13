@@ -41,6 +41,116 @@ const STOCK_SECTOR_MAP: Record<string, string> = {
 
 class DataAggregatorService {
   /**
+   * Hızlı mod: Sadece fiyat ve temel veriler (MongoDB-first, tek API)
+   * Büyük listelerde kullanılır (50+ hisse)
+   */
+  async getQuickStockData(symbol: string): Promise<StockData> {
+    const cacheKey = `stock:${symbol.toUpperCase()}`;
+
+    // Önce in-memory cache'e bak (30 saniye)
+    const cached = cache.get<StockData>(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      // 1. MongoDB'den veriyi al (en hızlı)
+      const dbData = await stockDbService.getStock(symbol);
+
+      // 2. Eğer DB'de veri varsa ve 5 dakikadan yeni ise, direkt dön
+      if (dbData && dbData.lastUpdated) {
+        const dataAge = Date.now() - new Date(dbData.lastUpdated).getTime();
+        if (dataAge < 5 * 60 * 1000) { // 5 dakika
+          cache.set(cacheKey, dbData);
+          return dbData;
+        }
+      }
+
+      // 3. Sadece hızlı kaynaktan fiyat al (TwelveData en hızlı)
+      const [twelveData] = await Promise.allSettled([
+        twelveDataService.getStockData(symbol),
+      ]);
+
+      // 4. DB verisi varsa, sadece fiyatı güncelle
+      if (dbData) {
+        const newPrice = this.getResultValue(twelveData);
+        if (newPrice.currentPrice) {
+          dbData.currentPrice = newPrice.currentPrice;
+          dbData.priceData = { ...dbData.priceData, ...newPrice.priceData };
+          dbData.tradingData = { ...dbData.tradingData, ...newPrice.tradingData };
+          dbData.lastUpdated = new Date();
+        }
+        cache.set(cacheKey, dbData);
+        return dbData;
+      }
+
+      // 5. DB'de veri yoksa, basit veri oluştur
+      const stockData: StockData = {
+        symbol: symbol.toUpperCase(),
+        companyName: symbol.toUpperCase(),
+        currentPrice: this.getResultValue(twelveData).currentPrice || null,
+        sector: STOCK_SECTOR_MAP[symbol.toUpperCase()] || null,
+        industry: null,
+        priceData: this.getResultValue(twelveData).priceData || {
+          currentPrice: null, dayHigh: null, dayLow: null, dayAverage: null,
+          week1High: null, week1Low: null, day30High: null, day30Low: null,
+          week52High: null, week52Low: null, week52Change: null, week52ChangeTL: null,
+        },
+        tradingData: this.getResultValue(twelveData).tradingData || {
+          bid: null, ask: null, volume: null, volumeTL: null, lotSize: null,
+          dailyChange: null, dailyChangePercent: null, dailyOpen: null,
+        },
+        fundamentals: {
+          marketCap: null, pdDD: null, fk: null, fdFAVO: null, pdEBITDA: null,
+          shares: null, paidCapital: null, eps: null, roe: null, roa: null,
+        },
+        financials: {
+          period: null, revenue: null, grossProfit: null, grossProfitMargin: null,
+          netIncome: null, profitability: null, equity: null, currentAssets: null,
+          fixedAssets: null, totalAssets: null, shortTermLiabilities: null,
+          longTermLiabilities: null, shortTermBankLoans: null, longTermBankLoans: null,
+          tradeReceivables: null, financialInvestments: null, investmentProperty: null,
+          prepaidExpenses: null, deferredTax: null, totalDebt: null, netDebt: null,
+          workingCapital: null,
+        },
+        analysis: {
+          domesticSalesRatio: null, foreignSalesRatio: null, exportRatio: null, averageDividend: null,
+        },
+        liquidity: { currentRatio: null, acidTestRatio: null, cashRatio: null },
+        leverage: { debtToEquity: null, debtToAssets: null, shortTermDebtRatio: null, longTermDebtRatio: null },
+        smartAnalysis: {
+          overallScore: 50, rating: 'Hold', valuationScore: 50, profitabilityScore: 50,
+          liquidityScore: 50, leverageScore: 50, strengths: [], weaknesses: [], warnings: [], recommendations: [],
+        },
+        lastUpdated: new Date(),
+      };
+
+      cache.set(cacheKey, stockData);
+      return stockData;
+
+    } catch (error: any) {
+      logger.error(`Quick data error for ${symbol}:`, error.message);
+      // Hata durumunda bile minimal veri dön
+      return {
+        symbol: symbol.toUpperCase(),
+        companyName: symbol.toUpperCase(),
+        currentPrice: null,
+        sector: STOCK_SECTOR_MAP[symbol.toUpperCase()] || null,
+        industry: null,
+        priceData: { currentPrice: null, dayHigh: null, dayLow: null, dayAverage: null, week1High: null, week1Low: null, day30High: null, day30Low: null, week52High: null, week52Low: null, week52Change: null, week52ChangeTL: null },
+        tradingData: { bid: null, ask: null, volume: null, volumeTL: null, lotSize: null, dailyChange: null, dailyChangePercent: null, dailyOpen: null },
+        fundamentals: { marketCap: null, pdDD: null, fk: null, fdFAVO: null, pdEBITDA: null, shares: null, paidCapital: null, eps: null, roe: null, roa: null },
+        financials: { period: null, revenue: null, grossProfit: null, grossProfitMargin: null, netIncome: null, profitability: null, equity: null, currentAssets: null, fixedAssets: null, totalAssets: null, shortTermLiabilities: null, longTermLiabilities: null, shortTermBankLoans: null, longTermBankLoans: null, tradeReceivables: null, financialInvestments: null, investmentProperty: null, prepaidExpenses: null, deferredTax: null, totalDebt: null, netDebt: null, workingCapital: null },
+        analysis: { domesticSalesRatio: null, foreignSalesRatio: null, exportRatio: null, averageDividend: null },
+        liquidity: { currentRatio: null, acidTestRatio: null, cashRatio: null },
+        leverage: { debtToEquity: null, debtToAssets: null, shortTermDebtRatio: null, longTermDebtRatio: null },
+        smartAnalysis: { overallScore: 50, rating: 'Hold', valuationScore: 50, profitabilityScore: 50, liquidityScore: 50, leverageScore: 50, strengths: [], weaknesses: [], warnings: [], recommendations: [] },
+        lastUpdated: new Date(),
+      };
+    }
+  }
+
+  /**
    * Tüm kaynaklardan veri çeker ve birleştirir (MongoDB-first yaklaşımı)
    */
   async getCompleteStockData(symbol: string): Promise<StockData> {
@@ -652,10 +762,44 @@ class DataAggregatorService {
 
   /**
    * Birden fazla hissenin verilerini paralel çeker
+   * 30+ hisse için hızlı mod kullanır (timeout önleme)
    */
-  async getMultipleStocks(symbols: string[]): Promise<StockData[]> {
-    logger.info(`Fetching data for ${symbols.length} stocks`);
+  async getMultipleStocks(symbols: string[], forceQuickMode: boolean = false): Promise<StockData[]> {
+    logger.info(`Fetching data for ${symbols.length} stocks (quickMode=${forceQuickMode || symbols.length > 30})`);
 
+    // 30+ hisse için hızlı modu kullan (timeout önleme)
+    const useQuickMode = forceQuickMode || symbols.length > 30;
+
+    if (useQuickMode) {
+      // Hızlı mod: Batch processing ile rate limiting
+      const BATCH_SIZE = 20;
+      const BATCH_DELAY = 200; // ms
+      const allResults: StockData[] = [];
+
+      for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
+        const batch = symbols.slice(i, i + BATCH_SIZE);
+
+        const batchResults = await Promise.allSettled(
+          batch.map(symbol => this.getQuickStockData(symbol))
+        );
+
+        const successfulResults = batchResults
+          .filter((result): result is PromiseFulfilledResult<StockData> => result.status === 'fulfilled')
+          .map(result => result.value);
+
+        allResults.push(...successfulResults);
+
+        // Rate limiting: Batch arası bekleme
+        if (i + BATCH_SIZE < symbols.length) {
+          await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
+        }
+      }
+
+      logger.info(`Quick mode completed: ${allResults.length}/${symbols.length} stocks loaded`);
+      return allResults;
+    }
+
+    // Normal mod: Tam veri çekimi (az sayıda hisse için)
     const results = await Promise.allSettled(
       symbols.map(symbol => this.getCompleteStockData(symbol))
     );

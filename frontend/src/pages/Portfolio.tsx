@@ -109,6 +109,8 @@ const Portfolio: React.FC = () => {
   const createPortfolio = async () => {
     if (!newPortfolioName.trim() || !token) return;
 
+    setError(null); // Clear previous errors
+
     try {
       const response = await fetch(`${API_URL}/portfolios`, {
         method: 'POST',
@@ -116,22 +118,29 @@ const Portfolio: React.FC = () => {
         body: JSON.stringify({ name: newPortfolioName, description: newPortfolioDesc }),
       });
 
-      if (response.ok) {
+      const data = await response.json();
+
+      if (response.ok && data.data) {
+        // Update state with new portfolio immediately
+        const newPortfolio = data.data;
+        setPortfolios(prev => [...prev, newPortfolio]);
+        setSelectedPortfolio(newPortfolio);
         setNewPortfolioName('');
         setNewPortfolioDesc('');
         setShowAddModal(false);
-        loadPortfolios();
       } else {
-        const data = await response.json();
         setError(data.error || 'Portfoy olusturulamadi');
       }
     } catch (err) {
+      console.error('Create portfolio error:', err);
       setError('Portfoy olusturulamadi');
     }
   };
 
   const deletePortfolio = async (id: string) => {
     if (!confirm('Bu portfoyu silmek istediginizden emin misiniz?') || !token) return;
+
+    setError(null); // Clear previous errors
 
     try {
       const response = await fetch(`${API_URL}/portfolios/${id}`, {
@@ -140,18 +149,29 @@ const Portfolio: React.FC = () => {
       });
 
       if (response.ok) {
-        setPortfolios(portfolios.filter(p => p._id !== id));
-        if (selectedPortfolio?._id === id) {
-          setSelectedPortfolio(portfolios.find(p => p._id !== id) || null);
-        }
+        // Update state immediately with functional update
+        setPortfolios(prev => {
+          const remaining = prev.filter(p => p._id !== id);
+          // Update selected portfolio if we deleted the selected one
+          if (selectedPortfolio?._id === id) {
+            setSelectedPortfolio(remaining[0] || null);
+          }
+          return remaining;
+        });
+      } else {
+        const data = await response.json();
+        setError(data.error || 'Portfoy silinemedi');
       }
     } catch (err) {
+      console.error('Delete portfolio error:', err);
       setError('Portfoy silinemedi');
     }
   };
 
   const addStock = async () => {
     if (!selectedPortfolio || !newStock.symbol || newStock.quantity <= 0 || !token) return;
+
+    setError(null); // Clear previous errors
 
     try {
       const response = await fetch(
@@ -167,15 +187,22 @@ const Portfolio: React.FC = () => {
         }
       );
 
-      if (response.ok) {
+      const data = await response.json();
+
+      if (response.ok && data.data) {
+        // Update state with updated portfolio
+        const updatedPortfolio = data.data;
+        setPortfolios(prev => prev.map(p => p._id === updatedPortfolio._id ? updatedPortfolio : p));
+        setSelectedPortfolio(updatedPortfolio);
         setNewStock({ symbol: '', quantity: 0, averageCost: 0 });
         setShowAddStockModal(false);
-        loadPortfolios();
+        // Refresh analysis
+        loadAnalysis(updatedPortfolio._id);
       } else {
-        const data = await response.json();
         setError(data.error || 'Hisse eklenemedi');
       }
     } catch (err) {
+      console.error('Add stock error:', err);
       setError('Hisse eklenemedi');
     }
   };
@@ -183,16 +210,28 @@ const Portfolio: React.FC = () => {
   const removeStock = async (symbol: string) => {
     if (!selectedPortfolio || !token) return;
 
+    setError(null); // Clear previous errors
+
     try {
       const response = await fetch(
         `${API_URL}/portfolios/${selectedPortfolio._id}/stocks/${symbol}`,
         { method: 'DELETE', headers: getAuthHeaders() }
       );
 
-      if (response.ok) {
-        loadPortfolios();
+      const data = await response.json();
+
+      if (response.ok && data.data) {
+        // Update state with updated portfolio
+        const updatedPortfolio = data.data;
+        setPortfolios(prev => prev.map(p => p._id === updatedPortfolio._id ? updatedPortfolio : p));
+        setSelectedPortfolio(updatedPortfolio);
+        // Refresh analysis
+        loadAnalysis(updatedPortfolio._id);
+      } else if (!response.ok) {
+        setError(data?.error || 'Hisse silinemedi');
       }
     } catch (err) {
+      console.error('Remove stock error:', err);
       setError('Hisse silinemedi');
     }
   };
