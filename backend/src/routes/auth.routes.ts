@@ -391,4 +391,54 @@ router.delete('/admin/reject/:userId', adminMiddleware, async (req: Request, res
   }
 });
 
+// EMERGENCY: Approve user by email (temporary endpoint for fixing superadmin issue)
+router.post('/emergency-approve', async (req: Request, res: Response) => {
+  try {
+    const { email, secretKey } = req.body;
+
+    // Simple security check
+    if (secretKey !== 'stockaiq-emergency-2025') {
+      return res.status(403).json({
+        success: false,
+        message: 'Invalid secret key',
+      });
+    }
+
+    const user = await User.findOneAndUpdate(
+      { email: email.toLowerCase() },
+      { approved: true, role: 'admin' },
+      { new: true }
+    ).select('-password');
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Kullanıcı bulunamadı',
+      });
+    }
+
+    logger.info(`Emergency approval: ${user.email} approved as admin`);
+
+    res.status(200).json({
+      success: true,
+      message: 'Kullanıcı admin olarak onaylandı',
+      data: {
+        user: {
+          id: user._id,
+          email: user.email,
+          username: user.username,
+          role: user.role,
+          approved: user.approved,
+        },
+      },
+    });
+  } catch (error) {
+    logger.error('Emergency approve error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Onaylama sırasında hata oluştu',
+    });
+  }
+});
+
 export default router;
