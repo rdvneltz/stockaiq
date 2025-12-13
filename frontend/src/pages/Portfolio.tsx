@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Plus, Trash2, PieChart, AlertCircle } from 'lucide-react';
 import { formatCurrency, formatPercent, getChangeColor } from '../utils/formatters';
+import { useAuth } from '../context/AuthContext';
 
 interface PortfolioStock {
   symbol: string;
@@ -36,6 +37,7 @@ interface PortfolioAnalysis {
 }
 
 const Portfolio: React.FC = () => {
+  const { token } = useAuth();
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
   const [selectedPortfolio, setSelectedPortfolio] = useState<Portfolio | null>(null);
   const [analysis, setAnalysis] = useState<PortfolioAnalysis | null>(null);
@@ -47,9 +49,18 @@ const Portfolio: React.FC = () => {
   const [newStock, setNewStock] = useState({ symbol: '', quantity: 0, averageCost: 0 });
   const [error, setError] = useState<string | null>(null);
 
+  const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
+
+  const getAuthHeaders = () => ({
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${token}`,
+  });
+
   useEffect(() => {
-    loadPortfolios();
-  }, []);
+    if (token) {
+      loadPortfolios();
+    }
+  }, [token]);
 
   useEffect(() => {
     if (selectedPortfolio) {
@@ -58,10 +69,11 @@ const Portfolio: React.FC = () => {
   }, [selectedPortfolio]);
 
   const loadPortfolios = async () => {
+    if (!token) return;
     setLoading(true);
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001/api'}/portfolios`, {
-        credentials: 'include',
+      const response = await fetch(`${API_URL}/portfolios`, {
+        headers: getAuthHeaders(),
       });
       if (response.ok) {
         const data = await response.json();
@@ -79,10 +91,11 @@ const Portfolio: React.FC = () => {
   };
 
   const loadAnalysis = async (portfolioId: string) => {
+    if (!token) return;
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_API_URL || 'http://localhost:5001/api'}/portfolios/${portfolioId}/analysis`,
-        { credentials: 'include' }
+        `${API_URL}/portfolios/${portfolioId}/analysis`,
+        { headers: getAuthHeaders() }
       );
       if (response.ok) {
         const data = await response.json();
@@ -94,13 +107,12 @@ const Portfolio: React.FC = () => {
   };
 
   const createPortfolio = async () => {
-    if (!newPortfolioName.trim()) return;
+    if (!newPortfolioName.trim() || !token) return;
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001/api'}/portfolios`, {
+      const response = await fetch(`${API_URL}/portfolios`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
+        headers: getAuthHeaders(),
         body: JSON.stringify({ name: newPortfolioName, description: newPortfolioDesc }),
       });
 
@@ -119,12 +131,12 @@ const Portfolio: React.FC = () => {
   };
 
   const deletePortfolio = async (id: string) => {
-    if (!confirm('Bu portfoyu silmek istediginizden emin misiniz?')) return;
+    if (!confirm('Bu portfoyu silmek istediginizden emin misiniz?') || !token) return;
 
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:5001/api'}/portfolios/${id}`, {
+      const response = await fetch(`${API_URL}/portfolios/${id}`, {
         method: 'DELETE',
-        credentials: 'include',
+        headers: getAuthHeaders(),
       });
 
       if (response.ok) {
@@ -139,16 +151,19 @@ const Portfolio: React.FC = () => {
   };
 
   const addStock = async () => {
-    if (!selectedPortfolio || !newStock.symbol || newStock.quantity <= 0) return;
+    if (!selectedPortfolio || !newStock.symbol || newStock.quantity <= 0 || !token) return;
 
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_API_URL || 'http://localhost:5001/api'}/portfolios/${selectedPortfolio._id}/stocks`,
+        `${API_URL}/portfolios/${selectedPortfolio._id}/stocks`,
         {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(newStock),
+          headers: getAuthHeaders(),
+          body: JSON.stringify({
+            symbol: newStock.symbol,
+            quantity: newStock.quantity,
+            avgCost: newStock.averageCost,
+          }),
         }
       );
 
@@ -166,12 +181,12 @@ const Portfolio: React.FC = () => {
   };
 
   const removeStock = async (symbol: string) => {
-    if (!selectedPortfolio) return;
+    if (!selectedPortfolio || !token) return;
 
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_API_URL || 'http://localhost:5001/api'}/portfolios/${selectedPortfolio._id}/stocks/${symbol}`,
-        { method: 'DELETE', credentials: 'include' }
+        `${API_URL}/portfolios/${selectedPortfolio._id}/stocks/${symbol}`,
+        { method: 'DELETE', headers: getAuthHeaders() }
       );
 
       if (response.ok) {

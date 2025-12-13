@@ -4,6 +4,7 @@ import investingService from './investing.service';
 import twelveDataService from './twelveData.service';
 import finnhubService from './finnhub.service';
 import fmpService from './fmp.service';
+import isYatirimService from './isyatirim.service';
 import stockDbService from './stockDb.service';
 import priceTargetCalculator from './priceTargetCalculator.service';
 import accumulationDetector from './accumulationDetector.service';
@@ -74,12 +75,13 @@ class DataAggregatorService {
       // 4. Sadece gerekli kategoriler için API çağrısı yap
       logger.info(`Fetching updates for ${symbol}: RT=${needsRealtimeUpdate}, Daily=${needsDailyUpdate}, Quarterly=${needsQuarterlyUpdate}`);
 
-      const [yahooData, twelveData, finnhubData, fmpData, kapData, investingData] = await Promise.allSettled([
+      const [yahooData, twelveData, finnhubData, fmpData, kapData, isYatirimData, investingData] = await Promise.allSettled([
         yahooFinanceService.getStockData(symbol),
         twelveDataService.getStockData(symbol),
         finnhubService.getStockData(symbol),
         needsQuarterlyUpdate ? fmpService.getFinancialStatements(symbol) : Promise.resolve({}),
         needsQuarterlyUpdate ? kapService.getFinancialData(symbol) : Promise.resolve({}),
+        needsQuarterlyUpdate ? isYatirimService.getFinancialStatements(symbol) : Promise.resolve({}),
         investingService.getStockData(symbol),
       ]);
 
@@ -91,6 +93,7 @@ class DataAggregatorService {
         this.getResultValue(finnhubData),
         this.getResultValue(fmpData),
         this.getResultValue(kapData),
+        this.getResultValue(isYatirimData),
         this.getResultValue(investingData),
         dbData // DB'den gelen eski veriyi de birleştir
       );
@@ -150,6 +153,7 @@ class DataAggregatorService {
 
   /**
    * Farklı kaynaklardan gelen verileri birleştirir (Fallback Chain)
+   * İş Yatırım eklendi - BIST finansal verileri için öncelikli kaynak
    */
   private mergeData(
     symbol: string,
@@ -158,6 +162,7 @@ class DataAggregatorService {
     finnhub: Partial<StockData>,
     fmp: Partial<StockData>,
     kap: Partial<StockData>,
+    isYatirim: Partial<StockData>,
     investing: Partial<StockData>,
     db: Partial<StockData> | null = null
   ): StockData {
@@ -195,35 +200,35 @@ class DataAggregatorService {
       },
 
       fundamentals: {
-        marketCap: twelve.fundamentals?.marketCap || finnhub.fundamentals?.marketCap || fmp.fundamentals?.marketCap || yahoo.fundamentals?.marketCap || investing.fundamentals?.marketCap || db?.fundamentals?.marketCap || null,
-        pdDD: twelve.fundamentals?.pdDD || finnhub.fundamentals?.pdDD || fmp.fundamentals?.pdDD || yahoo.fundamentals?.pdDD || investing.fundamentals?.pdDD || db?.fundamentals?.pdDD || null,
-        fk: twelve.fundamentals?.fk || finnhub.fundamentals?.fk || fmp.fundamentals?.fk || yahoo.fundamentals?.fk || investing.fundamentals?.fk || db?.fundamentals?.fk || null,
-        fdFAVO: yahoo.fundamentals?.fdFAVO || db?.fundamentals?.fdFAVO || null,
-        pdEBITDA: yahoo.fundamentals?.pdEBITDA || db?.fundamentals?.pdEBITDA || null,
+        marketCap: twelve.fundamentals?.marketCap || finnhub.fundamentals?.marketCap || fmp.fundamentals?.marketCap || isYatirim.fundamentals?.marketCap || yahoo.fundamentals?.marketCap || investing.fundamentals?.marketCap || db?.fundamentals?.marketCap || null,
+        pdDD: isYatirim.fundamentals?.pdDD || twelve.fundamentals?.pdDD || finnhub.fundamentals?.pdDD || fmp.fundamentals?.pdDD || yahoo.fundamentals?.pdDD || investing.fundamentals?.pdDD || db?.fundamentals?.pdDD || null,
+        fk: isYatirim.fundamentals?.fk || twelve.fundamentals?.fk || finnhub.fundamentals?.fk || fmp.fundamentals?.fk || yahoo.fundamentals?.fk || investing.fundamentals?.fk || db?.fundamentals?.fk || null,
+        fdFAVO: isYatirim.fundamentals?.fdFAVO || yahoo.fundamentals?.fdFAVO || db?.fundamentals?.fdFAVO || null,
+        pdEBITDA: isYatirim.fundamentals?.pdEBITDA || yahoo.fundamentals?.pdEBITDA || db?.fundamentals?.pdEBITDA || null,
         shares: twelve.fundamentals?.shares || finnhub.fundamentals?.shares || fmp.fundamentals?.shares || yahoo.fundamentals?.shares || kap.fundamentals?.shares || db?.fundamentals?.shares || null,
-        paidCapital: fmp.fundamentals?.paidCapital || kap.fundamentals?.paidCapital || db?.fundamentals?.paidCapital || null,
-        eps: twelve.fundamentals?.eps || finnhub.fundamentals?.eps || fmp.fundamentals?.eps || db?.fundamentals?.eps || null,
-        roe: finnhub.fundamentals?.roe || fmp.fundamentals?.roe || db?.fundamentals?.roe || null,
-        roa: finnhub.fundamentals?.roa || fmp.fundamentals?.roa || db?.fundamentals?.roa || null,
+        paidCapital: isYatirim.fundamentals?.paidCapital || fmp.fundamentals?.paidCapital || kap.fundamentals?.paidCapital || db?.fundamentals?.paidCapital || null,
+        eps: twelve.fundamentals?.eps || finnhub.fundamentals?.eps || fmp.fundamentals?.eps || isYatirim.fundamentals?.eps || db?.fundamentals?.eps || null,
+        roe: isYatirim.fundamentals?.roe || finnhub.fundamentals?.roe || fmp.fundamentals?.roe || db?.fundamentals?.roe || null,
+        roa: isYatirim.fundamentals?.roa || finnhub.fundamentals?.roa || fmp.fundamentals?.roa || db?.fundamentals?.roa || null,
       },
 
       financials: {
-        period: fmp.financials?.period || kap.financials?.period || yahoo.financials?.period || db?.financials?.period || null,
-        revenue: fmp.financials?.revenue || kap.financials?.revenue || yahoo.financials?.revenue || db?.financials?.revenue || null,
-        grossProfit: fmp.financials?.grossProfit || kap.financials?.grossProfit || yahoo.financials?.grossProfit || db?.financials?.grossProfit || null,
-        netIncome: fmp.financials?.netIncome || kap.financials?.netIncome || yahoo.financials?.netIncome || db?.financials?.netIncome || null,
-        profitability: kap.financials?.profitability || yahoo.financials?.profitability || db?.financials?.profitability || null,
+        period: fmp.financials?.period || isYatirim.financials?.period || kap.financials?.period || yahoo.financials?.period || db?.financials?.period || null,
+        revenue: isYatirim.financials?.revenue || fmp.financials?.revenue || kap.financials?.revenue || yahoo.financials?.revenue || db?.financials?.revenue || null,
+        grossProfit: isYatirim.financials?.grossProfit || fmp.financials?.grossProfit || kap.financials?.grossProfit || yahoo.financials?.grossProfit || db?.financials?.grossProfit || null,
+        netIncome: isYatirim.financials?.netIncome || fmp.financials?.netIncome || kap.financials?.netIncome || yahoo.financials?.netIncome || db?.financials?.netIncome || null,
+        profitability: isYatirim.financials?.profitability || kap.financials?.profitability || yahoo.financials?.profitability || db?.financials?.profitability || null,
         grossProfitMargin: db?.financials?.grossProfitMargin || null, // Hesaplanacak
-        equity: kap.financials?.equity || yahoo.financials?.equity || db?.financials?.equity || null,
-        currentAssets: kap.financials?.currentAssets || yahoo.financials?.currentAssets || db?.financials?.currentAssets || null,
-        fixedAssets: kap.financials?.fixedAssets || db?.financials?.fixedAssets || null, // enrichData'da hesaplanacak
-        totalAssets: kap.financials?.totalAssets || yahoo.financials?.totalAssets || db?.financials?.totalAssets || null,
-        shortTermLiabilities: kap.financials?.shortTermLiabilities || yahoo.financials?.shortTermLiabilities || db?.financials?.shortTermLiabilities || null,
-        longTermLiabilities: kap.financials?.longTermLiabilities || yahoo.financials?.longTermLiabilities || db?.financials?.longTermLiabilities || null,
-        shortTermBankLoans: kap.financials?.shortTermBankLoans || db?.financials?.shortTermBankLoans || null,
-        longTermBankLoans: kap.financials?.longTermBankLoans || db?.financials?.longTermBankLoans || null,
-        tradeReceivables: kap.financials?.tradeReceivables || db?.financials?.tradeReceivables || null,
-        financialInvestments: kap.financials?.financialInvestments || db?.financials?.financialInvestments || null,
+        equity: isYatirim.financials?.equity || kap.financials?.equity || yahoo.financials?.equity || db?.financials?.equity || null,
+        currentAssets: isYatirim.financials?.currentAssets || kap.financials?.currentAssets || yahoo.financials?.currentAssets || db?.financials?.currentAssets || null,
+        fixedAssets: isYatirim.financials?.fixedAssets || kap.financials?.fixedAssets || db?.financials?.fixedAssets || null,
+        totalAssets: isYatirim.financials?.totalAssets || kap.financials?.totalAssets || yahoo.financials?.totalAssets || db?.financials?.totalAssets || null,
+        shortTermLiabilities: isYatirim.financials?.shortTermLiabilities || kap.financials?.shortTermLiabilities || yahoo.financials?.shortTermLiabilities || db?.financials?.shortTermLiabilities || null,
+        longTermLiabilities: isYatirim.financials?.longTermLiabilities || kap.financials?.longTermLiabilities || yahoo.financials?.longTermLiabilities || db?.financials?.longTermLiabilities || null,
+        shortTermBankLoans: isYatirim.financials?.shortTermBankLoans || kap.financials?.shortTermBankLoans || db?.financials?.shortTermBankLoans || null,
+        longTermBankLoans: isYatirim.financials?.longTermBankLoans || kap.financials?.longTermBankLoans || db?.financials?.longTermBankLoans || null,
+        tradeReceivables: isYatirim.financials?.tradeReceivables || kap.financials?.tradeReceivables || db?.financials?.tradeReceivables || null,
+        financialInvestments: isYatirim.financials?.financialInvestments || kap.financials?.financialInvestments || db?.financials?.financialInvestments || null,
         investmentProperty: kap.financials?.investmentProperty || db?.financials?.investmentProperty || null,
         prepaidExpenses: kap.financials?.prepaidExpenses || db?.financials?.prepaidExpenses || null,
         deferredTax: kap.financials?.deferredTax || db?.financials?.deferredTax || null,

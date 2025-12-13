@@ -4,6 +4,7 @@ import investingService from './investing.service';
 import twelveDataService from './twelveData.service';
 import finnhubService from './finnhub.service';
 import fmpService from './fmp.service';
+import isYatirimService from './isyatirim.service';
 import logger from '../utils/logger';
 import { SystemHealth, DataSourceHealth } from '../types';
 
@@ -20,13 +21,14 @@ class HealthCheckService {
 
     try {
       // Tüm kaynaklarda paralel health check yap
-      const [yahooHealth, kapHealth, investingHealth, twelveDataHealth, finnhubHealth, fmpHealth] = await Promise.allSettled([
+      const [yahooHealth, kapHealth, investingHealth, twelveDataHealth, finnhubHealth, fmpHealth, isYatirimHealth] = await Promise.allSettled([
         this.checkYahooFinance(),
         this.checkKAP(),
         this.checkInvesting(),
         this.checkTwelveData(),
         this.checkFinnhub(),
         this.checkFMP(),
+        this.checkIsYatirim(),
       ]);
 
       const dataSources: DataSourceHealth[] = [
@@ -35,6 +37,7 @@ class HealthCheckService {
         this.getHealthResult('Finnhub', finnhubHealth),
         this.getHealthResult('FMP (Financial Modeling Prep)', fmpHealth),
         this.getHealthResult('KAP (Kamu Aydınlatma Platformu)', kapHealth),
+        this.getHealthResult('İş Yatırım', isYatirimHealth),
         this.getHealthResult('Investing.com', investingHealth),
       ];
 
@@ -225,6 +228,32 @@ class HealthCheckService {
   }
 
   /**
+   * İş Yatırım sağlık kontrolü
+   */
+  private async checkIsYatirim(): Promise<DataSourceHealth> {
+    const startTime = Date.now();
+    try {
+      const result = await isYatirimService.healthCheck();
+
+      return {
+        name: 'İş Yatırım',
+        status: result.status ? 'operational' : 'down',
+        lastCheck: new Date(),
+        responseTime: result.responseTime,
+        errorMessage: result.error,
+      };
+    } catch (error: any) {
+      return {
+        name: 'İş Yatırım',
+        status: 'down',
+        lastCheck: new Date(),
+        responseTime: Date.now() - startTime,
+        errorMessage: error.message,
+      };
+    }
+  }
+
+  /**
    * Promise.allSettled sonucundan sağlık bilgisi çıkarır
    */
   private getHealthResult(
@@ -332,6 +361,11 @@ class HealthCheckService {
         case 'investing':
         case 'investing.com':
           return await this.checkInvesting();
+
+        case 'isyatirim':
+        case 'isyatirim.com':
+        case 'is':
+          return await this.checkIsYatirim();
 
         default:
           logger.warn(`Unknown data source: ${sourceName}`);

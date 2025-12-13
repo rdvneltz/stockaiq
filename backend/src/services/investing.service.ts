@@ -302,8 +302,9 @@ class InvestingService {
 
     } catch (error: any) {
       const responseTime = Date.now() - startTime;
-      logger.error('Investing.com health check failed:', error);
-      return { status: false, responseTime, error: error.message };
+      const errorMessage = error?.message || 'Unknown error';
+      logger.error(`Investing.com health check failed: ${errorMessage}`);
+      return { status: false, responseTime, error: errorMessage };
     }
   }
 }
