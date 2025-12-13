@@ -287,7 +287,7 @@ const Footer: React.FC = () => {
     <footer className="footer">
       <div className="footer-container">
         <p className="footer-text">
-          © {currentYear} StockAIQ. Developed by <span className="developer-name">A. Rıdvan Elitez</span>
+          © {currentYear} StockAIQ v1.1. Developed by <span className="developer-name">A. Rıdvan Elitez</span>
         </p>
       </div>
 

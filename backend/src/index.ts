@@ -53,8 +53,8 @@ app.use('/api/auth', authRoutes);
 app.get('/', (req, res) => {
   res.json({
     name: 'StockAIQ API',
-    version: '1.0.0',
-    description: 'BIST Hisse Analiz Sistemi - Backend API',
+    version: '1.1.0',
+    description: 'BIST Hisse Analiz Sistemi - Backend API (with Auth)',
     endpoints: {
       stocks: '/api/stocks/:symbol',
       multipleStocks: '/api/stocks/multiple',
