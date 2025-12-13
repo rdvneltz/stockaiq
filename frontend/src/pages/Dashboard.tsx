@@ -1,32 +1,19 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, TrendingUp, TrendingDown, RefreshCw, Star, Filter, Clock } from 'lucide-react';
+import { Plus, TrendingUp, TrendingDown, RefreshCw, Star, Filter, Clock, List } from 'lucide-react';
 import { stockApi } from '../services/api';
 import { StockData } from '../types';
 import { formatCurrency, formatPercent, getChangeColor, formatTimeAgo } from '../utils/formatters';
 import StockChart from '../components/StockChart';
 import { useAuth } from '../context/AuthContext';
+import { BIST_INDEXES, BIST30_STOCKS, BIST50_STOCKS, BIST100_STOCKS, ALL_BIST_UNIQUE } from '../constants/bistStocks';
 
 // Global cache that persists between page navigations
 const globalStockCache = new Map<string, StockData>();
 let lastFetchTime: number = 0;
 const CACHE_DURATION = 30000; // 30 seconds
 
-// Complete BIST100 list (100 unique stocks - duplicates removed)
-const BIST100_STOCKS = Array.from(new Set([
-  'THYAO', 'GARAN', 'AKBNK', 'EREGL', 'SAHOL', 'KCHOL', 'TUPRS', 'TCELL',
-  'SISE', 'PETKM', 'VAKBN', 'YKBNK', 'HALKB', 'ASELS', 'BIMAS', 'ARCLK',
-  'KOZAL', 'TAVHL', 'PGSUS', 'ENKAI', 'TOASO', 'KRDMD', 'VESTL', 'FROTO',
-  'ISCTR', 'EKGYO', 'KOZAA', 'TTKOM', 'DOHOL', 'SOKM', 'SASA', 'PRKAB',
-  'GUBRF', 'TTRAK', 'GLYHO', 'KORDS', 'ENJSA', 'AEFES', 'OTKAR', 'BRYAT',
-  'AYGAZ', 'MGROS', 'ULKER', 'ISGYO', 'TSKB', 'ALGYO', 'CIMSA', 'DOAS',
-  'AKENR', 'HEKTS', 'LOGO', 'SKBNK', 'ALARK', 'CCOLA', 'TRKCM', 'KLMSN',
-  'SODA', 'EGEEN', 'GESAN', 'MAVI', 'MPARK', 'BUCIM', 'KARTN', 'VESBE',
-  'IZMDC', 'KONTR', 'AKSA', 'MNDRS', 'GOODY', 'NETAS', 'ODAS', 'OYAKC',
-  'TRGYO', 'VERUS', 'AYDEM', 'CRFSA', 'KARSN', 'PENTA', 'AGHOL', 'TKFEN',
-  'ANACM', 'ANELE', 'BAGFS', 'BANVT', 'BFREN', 'BIOEN', 'BRSAN', 'BTCIM',
-  'CLEBI', 'CWENE', 'DEVA', 'DURDO', 'ECILC', 'EMKEL', 'ENERY', 'ERBOS',
-  'IHLAS', 'IPEKE', 'ISDMR', 'ISGSY', 'JANTS'
-]));
+// Index types
+type BistIndex = 'BIST30' | 'BIST50' | 'BIST100' | 'ALL';
 
 const Dashboard: React.FC = () => {
   const { user, updateFavorites } = useAuth();
@@ -37,23 +24,37 @@ const Dashboard: React.FC = () => {
   const [selectedStock, setSelectedStock] = useState<StockData | null>(null);
   const [newSymbol, setNewSymbol] = useState('');
   const [addingStock, setAddingStock] = useState(false);
-  const [viewMode, setViewMode] = useState<'favorites' | 'all'>('favorites');
+  const [viewMode, setViewMode] = useState<'favorites' | 'index'>('favorites');
+  const [selectedIndex, setSelectedIndex] = useState<BistIndex>('BIST100');
   const [filterRating, setFilterRating] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [loadingProgress, setLoadingProgress] = useState({ loaded: 0, total: 0 });
 
   // Get favorites from user
   const favorites = user?.favorites || [];
 
+  // Get stocks based on selected index
+  const getIndexStocks = (index: BistIndex): string[] => {
+    switch (index) {
+      case 'BIST30': return BIST30_STOCKS;
+      case 'BIST50': return [...new Set(BIST50_STOCKS)];
+      case 'BIST100': return [...new Set(BIST100_STOCKS)];
+      case 'ALL': return ALL_BIST_UNIQUE;
+      default: return BIST100_STOCKS;
+    }
+  };
+
   // Load favorites from user on mount
   useEffect(() => {
     const initialFavorites = favorites.length > 0 ? favorites : ['THYAO', 'GARAN', 'AKBNK', 'EREGL', 'ASELS'];
-    setWatchlist(viewMode === 'favorites' ? initialFavorites : BIST100_STOCKS);
+    setWatchlist(viewMode === 'favorites' ? initialFavorites : getIndexStocks(selectedIndex));
   }, [user]);
 
-  // Update watchlist when view mode or favorites change
+  // Update watchlist when view mode, selected index, or favorites change
   useEffect(() => {
-    const newWatchlist = viewMode === 'favorites' ? favorites : BIST100_STOCKS;
+    const newWatchlist = viewMode === 'favorites' ? favorites : getIndexStocks(selectedIndex);
     setWatchlist(newWatchlist);
+    setLoadingProgress({ loaded: 0, total: newWatchlist.length });
 
     // Önce global cache'den göster (sayfa geçişlerinde hızlı yükleme)
     const cachedStocks = newWatchlist
@@ -62,9 +63,10 @@ const Dashboard: React.FC = () => {
 
     if (cachedStocks.length > 0) {
       setStocks(cachedStocks);
+      setLoadingProgress({ loaded: cachedStocks.length, total: newWatchlist.length });
       setLoading(false);
     }
-  }, [viewMode, favorites]);
+  }, [viewMode, selectedIndex, favorites]);
 
   useEffect(() => {
     isMounted.current = true;
@@ -93,6 +95,7 @@ const Dashboard: React.FC = () => {
       // Cache hala taze, sadece göster
       if (isMounted.current) {
         setStocks(cachedStocks);
+        setLoadingProgress({ loaded: cachedStocks.length, total: watchlist.length });
         setLoading(false);
       }
       return;
@@ -108,42 +111,58 @@ const Dashboard: React.FC = () => {
     }
 
     try {
-      // Batch'ler halinde çek (10'luk gruplar)
-      const batchSize = 10;
+      // Batch'ler halinde çek (büyük listeler için 20'lik gruplar, paralel 3 batch)
+      const batchSize = watchlist.length > 100 ? 20 : 10;
+      const parallelBatches = watchlist.length > 100 ? 3 : 5;
       const batches: string[][] = [];
 
       for (let i = 0; i < symbolsToFetch.length; i += batchSize) {
         batches.push(symbolsToFetch.slice(i, i + batchSize));
       }
 
-      // Tüm batch'leri paralel çek
-      const batchPromises = batches.map(batch => stockApi.getMultipleStocks(batch));
-      const batchResults = await Promise.allSettled(batchPromises);
+      let loadedCount = cachedStocks.length;
 
-      // Başarılı sonuçları birleştir ve global cache'e ekle
-      const newStocks = batchResults
-        .filter((result): result is PromiseFulfilledResult<StockData[]> => result.status === 'fulfilled')
-        .flatMap(result => result.value);
+      // Batch'leri paralel gruplar halinde çek (rate limiting için)
+      for (let i = 0; i < batches.length; i += parallelBatches) {
+        const currentBatches = batches.slice(i, i + parallelBatches);
+        const batchPromises = currentBatches.map(batch => stockApi.getMultipleStocks(batch));
+        const batchResults = await Promise.allSettled(batchPromises);
 
-      // Global cache'i güncelle
-      newStocks.forEach(stock => {
-        globalStockCache.set(stock.symbol, stock);
-      });
+        // Başarılı sonuçları birleştir ve global cache'e ekle
+        const newStocks = batchResults
+          .filter((result): result is PromiseFulfilledResult<StockData[]> => result.status === 'fulfilled')
+          .flatMap(result => result.value);
+
+        // Global cache'i güncelle
+        newStocks.forEach(stock => {
+          globalStockCache.set(stock.symbol, stock);
+        });
+
+        loadedCount += newStocks.length;
+
+        // Progress güncelle ve ara sonuçları göster
+        if (isMounted.current) {
+          setLoadingProgress({ loaded: loadedCount, total: watchlist.length });
+
+          // Her batch'ten sonra ara sonuçları göster
+          const allStocks = watchlist
+            .map(symbol => globalStockCache.get(symbol))
+            .filter((stock): stock is StockData => stock !== undefined);
+
+          const uniqueStocks = Array.from(
+            new Map(allStocks.map(stock => [stock.symbol, stock])).values()
+          );
+          setStocks(uniqueStocks);
+        }
+
+        // Rate limiting için küçük bir bekleme (büyük listeler için)
+        if (watchlist.length > 100 && i + parallelBatches < batches.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+
       lastFetchTime = Date.now();
 
-      // Watchlist'teki tüm hisseleri göster (cache + yeni)
-      const allStocks = watchlist
-        .map(symbol => globalStockCache.get(symbol))
-        .filter((stock): stock is StockData => stock !== undefined);
-
-      // Duplicate'leri kaldır (symbol bazında unique)
-      const uniqueStocks = Array.from(
-        new Map(allStocks.map(stock => [stock.symbol, stock])).values()
-      );
-
-      if (isMounted.current) {
-        setStocks(uniqueStocks);
-      }
     } catch (error) {
       console.error('Failed to load stocks:', error);
     } finally {
@@ -237,7 +256,12 @@ const Dashboard: React.FC = () => {
       <div className="header">
         <div className="title-section">
           <h1>📊 Piyasa Görünümü</h1>
-          <p>{filteredAndSortedStocks.length} hisse görüntüleniyor</p>
+          <p>
+            {filteredAndSortedStocks.length} hisse görüntüleniyor
+            {loading && loadingProgress.total > 0 && (
+              <span className="loading-progress"> • Yükleniyor: {loadingProgress.loaded}/{loadingProgress.total}</span>
+            )}
+          </p>
         </div>
         <div className="controls">
           <div className="view-toggle">
@@ -249,12 +273,27 @@ const Dashboard: React.FC = () => {
               Favoriler ({favorites.length})
             </button>
             <button
-              className={viewMode === 'all' ? 'active' : ''}
-              onClick={() => setViewMode('all')}
+              className={viewMode === 'index' ? 'active' : ''}
+              onClick={() => setViewMode('index')}
             >
-              BIST100 ({BIST100_STOCKS.length})
+              <List size={16} />
+              Endeks
             </button>
           </div>
+          {viewMode === 'index' && (
+            <div className="index-selector">
+              <select
+                value={selectedIndex}
+                onChange={(e) => setSelectedIndex(e.target.value as BistIndex)}
+                className="index-select"
+              >
+                <option value="BIST30">BIST 30 ({BIST_INDEXES.BIST30.count} hisse)</option>
+                <option value="BIST50">BIST 50 ({BIST_INDEXES.BIST50.count} hisse)</option>
+                <option value="BIST100">BIST 100 ({BIST_INDEXES.BIST100.count} hisse)</option>
+                <option value="ALL">Tüm BIST ({BIST_INDEXES.ALL.count} hisse)</option>
+              </select>
+            </div>
+          )}
           <div className="search-box">
             <input
               type="text"
@@ -414,6 +453,35 @@ const Dashboard: React.FC = () => {
         .filter-select option {
           background: #1a1f3a;
           color: #fff;
+        }
+
+        .index-selector {
+          display: flex;
+          align-items: center;
+        }
+
+        .index-select {
+          padding: 8px 12px;
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          border: none;
+          border-radius: 8px;
+          color: #fff;
+          font-size: 14px;
+          font-weight: 500;
+          cursor: pointer;
+          outline: none;
+          min-width: 180px;
+        }
+
+        .index-select option {
+          background: #1a1f3a;
+          color: #fff;
+          padding: 8px;
+        }
+
+        .loading-progress {
+          color: #667eea;
+          font-weight: 500;
         }
 
         .search-box {
