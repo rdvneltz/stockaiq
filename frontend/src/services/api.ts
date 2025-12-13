@@ -5,7 +5,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api'
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000,
+  timeout: 15000, // 15 saniyeye düşürüldü - daha hızlı fallback
   headers: {
     'Content-Type': 'application/json',
   },
@@ -15,7 +15,12 @@ const api = axios.create({
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    console.error('API Error:', error);
+    // Sadece gerçek hatalar için log (timeout ve network hataları için uyarı)
+    if (error.code === 'ECONNABORTED' || error.code === 'ERR_NETWORK') {
+      console.warn('API Timeout/Network:', error.message);
+    } else {
+      console.error('API Error:', error);
+    }
     return Promise.reject(error);
   }
 );

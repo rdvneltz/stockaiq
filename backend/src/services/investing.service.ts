@@ -6,11 +6,20 @@ import { StockData } from '../types';
 class InvestingService {
   private readonly BASE_URL = 'https://tr.investing.com';
   private readonly STOCK_URL = `${this.BASE_URL}/equities`;
+  private enabled = true; // Servisi devre dışı bırakabilmek için
+  private consecutiveFailures = 0;
+  private readonly MAX_FAILURES = 3; // 3 başarısız denemeden sonra geçici devre dışı
 
   /**
    * Investing.com'dan hisse verilerini çeker
    */
   async getStockData(symbol: string): Promise<Partial<StockData>> {
+    // Servis devre dışıysa boş data döndür
+    if (!this.enabled) {
+      logger.debug(`Investing.com is temporarily disabled, skipping ${symbol}`);
+      return this.getEmptyData();
+    }
+
     logger.info(`Fetching data from Investing.com: ${symbol}`);
 
     try {
@@ -20,12 +29,35 @@ class InvestingService {
       // 2. Hisse sayfasını scrape et
       const data = await this.scrapeStockPage(stockUrl, symbol);
 
+      // Başarılı olursa failure counter'ı sıfırla
+      this.consecutiveFailures = 0;
+
       logger.info(`Investing.com data fetched successfully: ${symbol}`);
       return data;
 
     } catch (error: any) {
-      logger.error(`Investing.com scraping error for ${symbol}:`, error);
+      this.handleError(error);
       return this.getEmptyData();
+    }
+  }
+
+  /**
+   * Hata yönetimi - ardışık hatalardan sonra servisi geçici devre dışı bırak
+   */
+  private handleError(error: any): void {
+    this.consecutiveFailures++;
+    logger.warn(`Investing.com error (${this.consecutiveFailures}/${this.MAX_FAILURES}):`, error.message);
+
+    if (this.consecutiveFailures >= this.MAX_FAILURES) {
+      logger.warn('Investing.com temporarily disabled due to consecutive failures');
+      this.enabled = false;
+
+      // 5 dakika sonra tekrar etkinleştir
+      setTimeout(() => {
+        this.enabled = true;
+        this.consecutiveFailures = 0;
+        logger.info('Investing.com re-enabled after cooldown');
+      }, 5 * 60 * 1000);
     }
   }
 
@@ -287,12 +319,24 @@ class InvestingService {
    * Health check - Investing.com'un erişilebilir olup olmadığını kontrol eder
    */
   async healthCheck(): Promise<{ status: boolean; responseTime: number; error?: string }> {
+    // Servis geçici olarak devre dışıysa, bunu bildir ama çalışıyor olarak işaretle
+    if (!this.enabled) {
+      return {
+        status: true,
+        responseTime: 0,
+        error: 'Temporarily disabled (cooling down from errors)'
+      };
+    }
+
     const startTime = Date.now();
     try {
       await axios.get(this.BASE_URL, {
-        timeout: 3000,
+        timeout: 5000,
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7',
+          'Cache-Control': 'no-cache',
         },
       });
 
@@ -302,10 +346,22 @@ class InvestingService {
 
     } catch (error: any) {
       const responseTime = Date.now() - startTime;
-      const errorMessage = error?.message || 'Unknown error';
-      logger.error(`Investing.com health check failed: ${errorMessage}`);
+      const errorMessage = error?.response?.status
+        ? `Request failed with status code ${error.response.status}`
+        : (error?.message || 'Unknown error');
+      logger.warn(`Investing.com health check failed: ${errorMessage}`);
+      // 403 ve network hataları için servisi devre dışı sayma, sadece bildir
       return { status: false, responseTime, error: errorMessage };
     }
+  }
+
+  /**
+   * Servisi manuel olarak sıfırla
+   */
+  resetService(): void {
+    this.enabled = true;
+    this.consecutiveFailures = 0;
+    logger.info('Investing.com service manually reset');
   }
 }
 
