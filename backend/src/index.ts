@@ -60,7 +60,7 @@ app.use('/api/portfolios', portfolioRoutes);
 app.get('/', (req, res) => {
   res.json({
     name: 'StockAIQ API',
-    version: '2.0.0',
+    version: '2.1.0',
     description: 'BIST Hisse Analiz Sistemi - Backend API (with Auth, Portfolio, Accumulation Detection)',
     endpoints: {
       stocks: '/api/stocks/:symbol',
