@@ -3,7 +3,7 @@ services:
   - type: web
     name: stockaiq-api
     runtime: node
-    region: frankfurt # Türkiye'ye en yakın
+    region: frankfurt
     plan: free
     buildCommand: cd backend && npm install && npm run build
     startCommand: cd backend && npm start
@@ -13,7 +13,7 @@ services:
       - key: PORT
         value: 10000
       - key: MONGODB_URI
-        sync: false # Render dashboard'dan manuel girilecek
+        sync: false
       - key: JWT_SECRET
         generateValue: true
       - key: TWELVE_DATA_API_KEY
@@ -24,11 +24,9 @@ services:
         sync: false
     healthCheckPath: /api/health
 
-  # Frontend - Static Site
-  - type: web
+  # Frontend - Static Site (free by default)
+  - type: static
     name: stockaiq-frontend
-    runtime: static
-    plan: free
     buildCommand: cd frontend && npm install && npm run build
     staticPublishPath: frontend/dist
     routes:
@@ -37,11 +35,7 @@ services:
         destination: /index.html
     envVars:
       - key: VITE_API_URL
-        fromService:
-          type: web
-          name: stockaiq-api
-          property: hostport
-        # Bu otomatik çalışmazsa manuel: https://stockaiq-api.onrender.com/api
+        value: https://stockaiq-api.onrender.com/api
     headers:
       - path: /*
         name: Cache-Control
