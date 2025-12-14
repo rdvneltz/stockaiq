@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Server, Loader, Coffee, Zap } from 'lucide-react';
+import { Coffee, Zap } from 'lucide-react';
 
 interface WakeUpScreenProps {
   isVisible: boolean;
