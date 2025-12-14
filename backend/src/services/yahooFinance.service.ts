@@ -4,6 +4,9 @@ import { StockData } from '../types';
 
 class YahooFinanceService {
   private readonly BIST_SUFFIX = '.IS';
+  private enabled = true;
+  private consecutiveFailures = 0;
+  private readonly MAX_FAILURES = 5; // Yahoo'ya daha fazla şans ver
 
   /**
    * BIST hisse sembolünü Yahoo Finance formatına dönüştürür
@@ -18,6 +21,12 @@ class YahooFinanceService {
    * Yahoo Finance'den hisse verilerini çeker
    */
   async getStockData(symbol: string): Promise<Partial<StockData>> {
+    // Servis devre dışıysa boş döndür
+    if (!this.enabled) {
+      logger.debug(`Yahoo Finance is temporarily disabled, skipping ${symbol}`);
+      return {};
+    }
+
     const yahooSymbol = this.formatSymbol(symbol);
     logger.info(`Fetching data from Yahoo Finance: ${yahooSymbol}`);
 
@@ -119,12 +128,36 @@ class YahooFinanceService {
         lastUpdated: new Date(),
       };
 
+      // Başarılı - hata sayacını sıfırla
+      this.consecutiveFailures = 0;
+
       logger.info(`Yahoo Finance data fetched successfully: ${symbol}`);
       return data;
 
     } catch (error: any) {
-      logger.error(`Yahoo Finance error for ${symbol}:`, error);
-      throw new Error(`Yahoo Finance veri çekme hatası: ${error.message}`);
+      this.handleError(error, symbol);
+      // Hata fırlatmak yerine boş data döndür - diğer kaynaklar kullanılsın
+      return {};
+    }
+  }
+
+  /**
+   * Hata yönetimi
+   */
+  private handleError(error: any, symbol: string): void {
+    this.consecutiveFailures++;
+    logger.warn(`Yahoo Finance error for ${symbol} (${this.consecutiveFailures}/${this.MAX_FAILURES}):`, error.message);
+
+    if (this.consecutiveFailures >= this.MAX_FAILURES) {
+      logger.warn('Yahoo Finance temporarily disabled due to consecutive failures');
+      this.enabled = false;
+
+      // 3 dakika sonra tekrar etkinleştir (Yahoo genelde hızlı düzelir)
+      setTimeout(() => {
+        this.enabled = true;
+        this.consecutiveFailures = 0;
+        logger.info('Yahoo Finance re-enabled after cooldown');
+      }, 3 * 60 * 1000);
     }
   }
 
@@ -286,6 +319,15 @@ class YahooFinanceService {
    * Health check - Yahoo Finance servisinin çalışıp çalışmadığını kontrol eder
    */
   async healthCheck(): Promise<{ status: boolean; responseTime: number; error?: string }> {
+    // Servis geçici olarak devre dışıysa
+    if (!this.enabled) {
+      return {
+        status: true,
+        responseTime: 0,
+        error: 'Temporarily disabled (cooling down from errors)'
+      };
+    }
+
     const startTime = Date.now();
     try {
       // BIST30 endeksini test için kullan
@@ -296,9 +338,19 @@ class YahooFinanceService {
       return { status: true, responseTime };
     } catch (error: any) {
       const responseTime = Date.now() - startTime;
-      logger.error('Yahoo Finance health check failed:', error);
-      return { status: false, responseTime, error: error.message };
+      const errorMessage = error?.message || 'Unknown error';
+      logger.warn('Yahoo Finance health check failed:', errorMessage);
+      return { status: false, responseTime, error: errorMessage };
     }
+  }
+
+  /**
+   * Servisi manuel olarak sıfırla
+   */
+  resetService(): void {
+    this.enabled = true;
+    this.consecutiveFailures = 0;
+    logger.info('Yahoo Finance service manually reset');
   }
 
   // Yardımcı hesaplama fonksiyonları

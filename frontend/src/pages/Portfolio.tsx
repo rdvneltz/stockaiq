@@ -109,29 +109,65 @@ const Portfolio: React.FC = () => {
   const createPortfolio = async () => {
     if (!newPortfolioName.trim() || !token) return;
 
+    const tempId = `temp-${Date.now()}`;
+    const newPortfolio: Portfolio = {
+      _id: tempId,
+      name: newPortfolioName.trim(),
+      description: newPortfolioDesc.trim() || undefined,
+      stocks: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+
+    // Optimistik güncelleme - hemen göster
+    setPortfolios(prev => [...prev, newPortfolio]);
+    setNewPortfolioName('');
+    setNewPortfolioDesc('');
+    setShowAddModal(false);
+
     try {
       const response = await fetch(`${API_URL}/portfolios`, {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: JSON.stringify({ name: newPortfolioName, description: newPortfolioDesc }),
+        body: JSON.stringify({ name: newPortfolio.name, description: newPortfolio.description }),
       });
 
       if (response.ok) {
-        setNewPortfolioName('');
-        setNewPortfolioDesc('');
-        setShowAddModal(false);
-        loadPortfolios();
-      } else {
         const data = await response.json();
-        setError(data.error || 'Portfoy olusturulamadi');
+        // Geçici ID'yi gerçek ID ile değiştir
+        setPortfolios(prev =>
+          prev.map(p => p._id === tempId ? data.data : p)
+        );
+        // Yeni oluşturulan portföyü seç
+        if (!selectedPortfolio) {
+          setSelectedPortfolio(data.data);
+        }
+      } else {
+        // Hata durumunda geri al
+        const errorData = await response.json();
+        setPortfolios(prev => prev.filter(p => p._id !== tempId));
+        setError(errorData.error || 'Portfoy olusturulamadi');
       }
     } catch (err) {
-      setError('Portfoy olusturulamadi');
+      // Hata durumunda geri al
+      setPortfolios(prev => prev.filter(p => p._id !== tempId));
+      setError('Portfoy olusturulamadi - baglanti hatasi');
     }
   };
 
   const deletePortfolio = async (id: string) => {
     if (!confirm('Bu portfoyu silmek istediginizden emin misiniz?') || !token) return;
+
+    // Silinen portföyü yedekle (geri alma için)
+    const deletedPortfolio = portfolios.find(p => p._id === id);
+    const deletedIndex = portfolios.findIndex(p => p._id === id);
+
+    // Optimistik güncelleme - hemen kaldır
+    setPortfolios(prev => prev.filter(p => p._id !== id));
+    if (selectedPortfolio?._id === id) {
+      const remaining = portfolios.filter(p => p._id !== id);
+      setSelectedPortfolio(remaining.length > 0 ? remaining[0] : null);
+    }
 
     try {
       const response = await fetch(`${API_URL}/portfolios/${id}`, {
@@ -139,19 +175,57 @@ const Portfolio: React.FC = () => {
         headers: getAuthHeaders(),
       });
 
-      if (response.ok) {
-        setPortfolios(portfolios.filter(p => p._id !== id));
-        if (selectedPortfolio?._id === id) {
-          setSelectedPortfolio(portfolios.find(p => p._id !== id) || null);
+      if (!response.ok) {
+        // Hata durumunda geri ekle
+        if (deletedPortfolio) {
+          setPortfolios(prev => {
+            const newList = [...prev];
+            newList.splice(deletedIndex, 0, deletedPortfolio);
+            return newList;
+          });
+          if (selectedPortfolio === null) {
+            setSelectedPortfolio(deletedPortfolio);
+          }
         }
+        const errorData = await response.json().catch(() => ({}));
+        setError(errorData.error || 'Portfoy silinemedi');
       }
     } catch (err) {
-      setError('Portfoy silinemedi');
+      // Hata durumunda geri ekle
+      if (deletedPortfolio) {
+        setPortfolios(prev => {
+          const newList = [...prev];
+          newList.splice(deletedIndex, 0, deletedPortfolio);
+          return newList;
+        });
+        if (selectedPortfolio === null) {
+          setSelectedPortfolio(deletedPortfolio);
+        }
+      }
+      setError('Portfoy silinemedi - baglanti hatasi');
     }
   };
 
   const addStock = async () => {
     if (!selectedPortfolio || !newStock.symbol || newStock.quantity <= 0 || !token) return;
+
+    const stockToAdd: PortfolioStock = {
+      symbol: newStock.symbol.toUpperCase(),
+      quantity: newStock.quantity,
+      averageCost: newStock.averageCost,
+    };
+
+    // Optimistik güncelleme
+    const updatedPortfolio = {
+      ...selectedPortfolio,
+      stocks: [...selectedPortfolio.stocks, stockToAdd],
+    };
+    setSelectedPortfolio(updatedPortfolio);
+    setPortfolios(prev =>
+      prev.map(p => p._id === selectedPortfolio._id ? updatedPortfolio : p)
+    );
+    setNewStock({ symbol: '', quantity: 0, averageCost: 0 });
+    setShowAddStockModal(false);
 
     try {
       const response = await fetch(
@@ -160,28 +234,55 @@ const Portfolio: React.FC = () => {
           method: 'POST',
           headers: getAuthHeaders(),
           body: JSON.stringify({
-            symbol: newStock.symbol,
-            quantity: newStock.quantity,
-            avgCost: newStock.averageCost,
+            symbol: stockToAdd.symbol,
+            quantity: stockToAdd.quantity,
+            avgCost: stockToAdd.averageCost,
           }),
         }
       );
 
       if (response.ok) {
-        setNewStock({ symbol: '', quantity: 0, averageCost: 0 });
-        setShowAddStockModal(false);
-        loadPortfolios();
-      } else {
         const data = await response.json();
-        setError(data.error || 'Hisse eklenemedi');
+        // Sunucudan gelen verilerle güncelle
+        setSelectedPortfolio(data.data);
+        setPortfolios(prev =>
+          prev.map(p => p._id === selectedPortfolio._id ? data.data : p)
+        );
+      } else {
+        // Hata durumunda geri al
+        setSelectedPortfolio(selectedPortfolio);
+        setPortfolios(prev =>
+          prev.map(p => p._id === selectedPortfolio._id ? selectedPortfolio : p)
+        );
+        const errorData = await response.json().catch(() => ({}));
+        setError(errorData.error || 'Hisse eklenemedi');
       }
     } catch (err) {
-      setError('Hisse eklenemedi');
+      // Hata durumunda geri al
+      setSelectedPortfolio(selectedPortfolio);
+      setPortfolios(prev =>
+        prev.map(p => p._id === selectedPortfolio._id ? selectedPortfolio : p)
+      );
+      setError('Hisse eklenemedi - baglanti hatasi');
     }
   };
 
   const removeStock = async (symbol: string) => {
     if (!selectedPortfolio || !token) return;
+
+    // Silinen hisseyi yedekle
+    const removedStock = selectedPortfolio.stocks.find(s => s.symbol === symbol);
+    const stockIndex = selectedPortfolio.stocks.findIndex(s => s.symbol === symbol);
+
+    // Optimistik güncelleme
+    const updatedPortfolio = {
+      ...selectedPortfolio,
+      stocks: selectedPortfolio.stocks.filter(s => s.symbol !== symbol),
+    };
+    setSelectedPortfolio(updatedPortfolio);
+    setPortfolios(prev =>
+      prev.map(p => p._id === selectedPortfolio._id ? updatedPortfolio : p)
+    );
 
     try {
       const response = await fetch(
@@ -190,10 +291,41 @@ const Portfolio: React.FC = () => {
       );
 
       if (response.ok) {
-        loadPortfolios();
+        const data = await response.json();
+        // Sunucudan gelen verilerle güncelle
+        setSelectedPortfolio(data.data);
+        setPortfolios(prev =>
+          prev.map(p => p._id === selectedPortfolio._id ? data.data : p)
+        );
+      } else {
+        // Hata durumunda geri ekle
+        if (removedStock) {
+          const restoredPortfolio = {
+            ...selectedPortfolio,
+            stocks: [...selectedPortfolio.stocks],
+          };
+          restoredPortfolio.stocks.splice(stockIndex, 0, removedStock);
+          setSelectedPortfolio(restoredPortfolio);
+          setPortfolios(prev =>
+            prev.map(p => p._id === selectedPortfolio._id ? restoredPortfolio : p)
+          );
+        }
+        setError('Hisse silinemedi');
       }
     } catch (err) {
-      setError('Hisse silinemedi');
+      // Hata durumunda geri ekle
+      if (removedStock) {
+        const restoredPortfolio = {
+          ...selectedPortfolio,
+          stocks: [...selectedPortfolio.stocks],
+        };
+        restoredPortfolio.stocks.splice(stockIndex, 0, removedStock);
+        setSelectedPortfolio(restoredPortfolio);
+        setPortfolios(prev =>
+          prev.map(p => p._id === selectedPortfolio._id ? restoredPortfolio : p)
+        );
+      }
+      setError('Hisse silinemedi - baglanti hatasi');
     }
   };
 

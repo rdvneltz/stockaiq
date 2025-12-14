@@ -10,7 +10,8 @@ import { BIST_INDEXES, BIST30_STOCKS, BIST50_STOCKS, BIST100_STOCKS, ALL_BIST_UN
 // Global cache that persists between page navigations
 const globalStockCache = new Map<string, StockData>();
 let lastFetchTime: number = 0;
-const CACHE_DURATION = 30000; // 30 seconds
+const CACHE_DURATION = 60000; // 60 saniye - daha uzun cache süresi
+const BACKGROUND_REFRESH_INTERVAL = 45000; // 45 saniye - arka planda yenileme
 
 // Index types
 type BistIndex = 'BIST30' | 'BIST50' | 'BIST100' | 'ALL';
@@ -53,8 +54,16 @@ const Dashboard: React.FC = () => {
   // Update watchlist when view mode, selected index, or favorites change
   useEffect(() => {
     const newWatchlist = viewMode === 'favorites' ? favorites : getIndexStocks(selectedIndex);
+
+    // Watchlist değişmediyse güncelleme yapma
+    const watchlistChanged = newWatchlist.length !== watchlist.length ||
+      newWatchlist.some((symbol, i) => watchlist[i] !== symbol);
+
+    if (!watchlistChanged && watchlist.length > 0) {
+      return;
+    }
+
     setWatchlist(newWatchlist);
-    setLoadingProgress({ loaded: 0, total: newWatchlist.length });
 
     // Önce global cache'den göster (sayfa geçişlerinde hızlı yükleme)
     const cachedStocks = newWatchlist
@@ -65,15 +74,31 @@ const Dashboard: React.FC = () => {
       setStocks(cachedStocks);
       setLoadingProgress({ loaded: cachedStocks.length, total: newWatchlist.length });
       setLoading(false);
+    } else {
+      setLoadingProgress({ loaded: 0, total: newWatchlist.length });
     }
   }, [viewMode, selectedIndex, favorites]);
 
   useEffect(() => {
     isMounted.current = true;
     if (watchlist.length > 0) {
-      loadStocks();
-      // Her 30 saniyede bir güncelle
-      const interval = setInterval(loadStocks, 30000);
+      // İlk yükleme - sadece cache boşsa veya çok eskiyse
+      const now = Date.now();
+      const cachedStocks = watchlist
+        .map(symbol => globalStockCache.get(symbol))
+        .filter((stock): stock is StockData => stock !== undefined);
+
+      // Cache yeteri kadar doluysa (%80+) ve tazeyse, hemen göster
+      if (cachedStocks.length >= watchlist.length * 0.8 && now - lastFetchTime < CACHE_DURATION) {
+        setStocks(cachedStocks);
+        setLoadingProgress({ loaded: cachedStocks.length, total: watchlist.length });
+        setLoading(false);
+      } else {
+        loadStocks();
+      }
+
+      // Arka planda periyodik güncelleme
+      const interval = setInterval(loadStocks, BACKGROUND_REFRESH_INTERVAL);
       return () => {
         isMounted.current = false;
         clearInterval(interval);
@@ -91,8 +116,8 @@ const Dashboard: React.FC = () => {
       .map(symbol => globalStockCache.get(symbol))
       .filter((stock): stock is StockData => stock !== undefined);
 
-    if (cacheAge < CACHE_DURATION && cachedStocks.length >= watchlist.length * 0.8) {
-      // Cache hala taze, sadece göster
+    // Cache %90+ doluysa ve 30 saniyeden tazeyse, yeniden çekme
+    if (cacheAge < CACHE_DURATION && cachedStocks.length >= watchlist.length * 0.9) {
       if (isMounted.current) {
         setStocks(cachedStocks);
         setLoadingProgress({ loaded: cachedStocks.length, total: watchlist.length });
@@ -101,9 +126,21 @@ const Dashboard: React.FC = () => {
       return;
     }
 
-    // Sadece cache'de olmayan veya eski olanları çek
+    // Sadece cache'de olmayan sembolleri çek
     const uncachedSymbols = watchlist.filter(symbol => !globalStockCache.has(symbol));
-    const symbolsToFetch = uncachedSymbols.length > 0 ? uncachedSymbols : watchlist;
+
+    // Eğer tüm veriler cache'deyse ve biraz eskiyse, arka planda güncelle
+    const symbolsToFetch = uncachedSymbols.length > 0 ? uncachedSymbols :
+      (cacheAge > CACHE_DURATION ? watchlist.slice(0, 30) : []); // Sadece ilk 30'u güncelle
+
+    // Hiç veri çekmemiz gerekmiyorsa cache'den göster
+    if (symbolsToFetch.length === 0) {
+      if (isMounted.current && cachedStocks.length > 0) {
+        setStocks(cachedStocks);
+        setLoading(false);
+      }
+      return;
+    }
 
     // Eğer hiç veri yoksa loading göster, yoksa arka planda güncelle
     if (cachedStocks.length === 0) {
@@ -111,9 +148,9 @@ const Dashboard: React.FC = () => {
     }
 
     try {
-      // Batch'ler halinde çek (büyük listeler için 20'lik gruplar, paralel 3 batch)
-      const batchSize = watchlist.length > 100 ? 20 : 10;
-      const parallelBatches = watchlist.length > 100 ? 3 : 5;
+      // Daha küçük batch'ler: 8'lik gruplar, 2 paralel batch (timeout riski azaltır)
+      const batchSize = 8;
+      const parallelBatches = 2;
       const batches: string[][] = [];
 
       for (let i = 0; i < symbolsToFetch.length; i += batchSize) {
@@ -122,20 +159,21 @@ const Dashboard: React.FC = () => {
 
       let loadedCount = cachedStocks.length;
 
-      // Batch'leri paralel gruplar halinde çek (rate limiting için)
+      // Batch'leri paralel gruplar halinde çek
       for (let i = 0; i < batches.length; i += parallelBatches) {
         const currentBatches = batches.slice(i, i + parallelBatches);
-        const batchPromises = currentBatches.map(batch => stockApi.getMultipleStocks(batch));
-        const batchResults = await Promise.allSettled(batchPromises);
+        const batchPromises = currentBatches.map(batch =>
+          stockApi.getMultipleStocks(batch).catch(() => [] as StockData[])
+        );
 
-        // Başarılı sonuçları birleştir ve global cache'e ekle
-        const newStocks = batchResults
-          .filter((result): result is PromiseFulfilledResult<StockData[]> => result.status === 'fulfilled')
-          .flatMap(result => result.value);
+        const batchResults = await Promise.all(batchPromises);
+        const newStocks = batchResults.flat();
 
         // Global cache'i güncelle
         newStocks.forEach(stock => {
-          globalStockCache.set(stock.symbol, stock);
+          if (stock && stock.symbol) {
+            globalStockCache.set(stock.symbol, stock);
+          }
         });
 
         loadedCount += newStocks.length;
@@ -155,16 +193,20 @@ const Dashboard: React.FC = () => {
           setStocks(uniqueStocks);
         }
 
-        // Rate limiting için küçük bir bekleme (büyük listeler için)
-        if (watchlist.length > 100 && i + parallelBatches < batches.length) {
-          await new Promise(resolve => setTimeout(resolve, 100));
+        // Rate limiting için bekleme (her batch grubundan sonra)
+        if (i + parallelBatches < batches.length) {
+          await new Promise(resolve => setTimeout(resolve, 200));
         }
       }
 
       lastFetchTime = Date.now();
 
     } catch (error) {
-      console.error('Failed to load stocks:', error);
+      console.warn('Failed to load some stocks:', error);
+      // Hata olsa bile cache'deki verileri göster
+      if (isMounted.current && cachedStocks.length > 0) {
+        setStocks(cachedStocks);
+      }
     } finally {
       if (isMounted.current) {
         setLoading(false);
