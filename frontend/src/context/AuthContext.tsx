@@ -101,23 +101,35 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     localStorage.removeItem('user');
   };
 
-  const updateFavorites = async (favorites: string[]) => {
-    if (!token) return;
+  const updateFavorites = async (favorites: string[]): Promise<void> => {
+    if (!token) {
+      throw new Error('Oturum açmanız gerekiyor');
+    }
 
-    const response = await fetch(`${API_URL}/auth/favorites`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify({ favorites }),
-    });
+    try {
+      const response = await fetch(`${API_URL}/auth/favorites`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ favorites }),
+      });
 
-    const data = await response.json();
+      const data = await response.json();
 
-    if (data.success && data.data.user) {
-      setUser(data.data.user);
-      localStorage.setItem('user', JSON.stringify(data.data.user));
+      if (!data.success) {
+        throw new Error(data.message || 'Favoriler güncellenemedi');
+      }
+
+      if (data.data?.user) {
+        setUser(data.data.user);
+        localStorage.setItem('user', JSON.stringify(data.data.user));
+      }
+    } catch (error: any) {
+      // Network hatası veya API hatası
+      console.error('Favori güncelleme hatası:', error);
+      throw new Error(error.message || 'Favoriler güncellenirken bir hata oluştu');
     }
   };
 

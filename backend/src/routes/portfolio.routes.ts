@@ -307,8 +307,10 @@ router.get('/:id/analysis', async (req: Request, res: Response) => {
       sectorCounts[sector].value += stockValue;
       sectorCounts[sector].count++;
 
-      // Performans
-      const profitPercent = ((currentPrice - stock.avgCost) / stock.avgCost) * 100;
+      // Performans (division by zero kontrolü)
+      const profitPercent = stock.avgCost > 0
+        ? ((currentPrice - stock.avgCost) / stock.avgCost) * 100
+        : 0;
       performances.push({ symbol: stock.symbol, profitPercent });
 
       // Uyarılar
@@ -320,10 +322,10 @@ router.get('/:id/analysis', async (req: Request, res: Response) => {
       }
     });
 
-    // Sektör dağılımını hesapla
+    // Sektör dağılımını hesapla (division by zero kontrolü)
     const sectorDistribution = Object.entries(sectorCounts).map(([sector, data]) => ({
       sector,
-      percentage: (data.value / totalValue) * 100,
+      percentage: totalValue > 0 ? (data.value / totalValue) * 100 : 0,
       value: data.value,
     })).sort((a, b) => b.percentage - a.percentage);
 

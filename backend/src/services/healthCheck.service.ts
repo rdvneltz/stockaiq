@@ -12,6 +12,7 @@ class HealthCheckService {
   private lastCheckTime: Date | null = null;
   private lastCheckResult: SystemHealth | null = null;
   private checkInterval = 5 * 60 * 1000; // 5 dakika
+  private periodicCheckTimer: NodeJS.Timeout | null = null; // Memory leak önleme
 
   /**
    * Tüm veri kaynaklarının sağlık durumunu kontrol eder
@@ -325,15 +326,29 @@ class HealthCheckService {
    * NOT: İlk kontrol index.ts'de yapılıyor, burada tekrar yapmıyoruz (duplikasyon önleme)
    */
   startPeriodicCheck(): void {
+    // Önceki timer varsa temizle (memory leak önleme)
+    this.stopPeriodicCheck();
+
     logger.info('Starting periodic health check (interval: 5 min)');
 
     // İlk kontrolü YAPMA - index.ts'de zaten yapılıyor!
     // Bu duplikasyon Yahoo Finance rate limit'e çarpmaya sebep oluyordu.
 
     // Sadece periyodik kontrol başlat (5 dakika sonra ilk çalışacak)
-    setInterval(() => {
+    this.periodicCheckTimer = setInterval(() => {
       this.checkAllSources().catch(err => logger.error('Periodic health check failed:', err));
     }, this.checkInterval);
+  }
+
+  /**
+   * Periyodik kontrolü durdurur (graceful shutdown için)
+   */
+  stopPeriodicCheck(): void {
+    if (this.periodicCheckTimer) {
+      clearInterval(this.periodicCheckTimer);
+      this.periodicCheckTimer = null;
+      logger.info('Periodic health check stopped');
+    }
   }
 
   /**

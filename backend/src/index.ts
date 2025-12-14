@@ -48,6 +48,17 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Request timeout middleware - 30 saniye (uzun süren istekleri kes)
+app.use((req, res, next) => {
+  req.setTimeout(30000, () => {
+    logger.warn(`Request timeout: ${req.method} ${req.url}`);
+    if (!res.headersSent) {
+      res.status(408).json({ success: false, error: 'Request timeout' });
+    }
+  });
+  next();
+});
+
 // Rate limiting
 app.use('/api', apiLimiter);
 
@@ -138,12 +149,14 @@ if (isServerless) {
   // Graceful shutdown
   process.on('SIGTERM', async () => {
     logger.info('SIGTERM signal received: closing HTTP server');
+    healthCheckService.stopPeriodicCheck(); // Memory leak önleme
     await database.disconnect();
     process.exit(0);
   });
 
   process.on('SIGINT', async () => {
     logger.info('SIGINT signal received: closing HTTP server');
+    healthCheckService.stopPeriodicCheck(); // Memory leak önleme
     await database.disconnect();
     process.exit(0);
   });
