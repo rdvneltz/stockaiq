@@ -5,6 +5,7 @@ import stockRoutes from './routes/stock.routes';
 import healthRoutes from './routes/health.routes';
 import authRoutes from './routes/auth.routes';
 import portfolioRoutes from './routes/portfolio.routes';
+import adminRoutes from './routes/admin.routes';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { apiLimiter } from './middleware/rateLimiter';
 import healthCheckService from './services/healthCheck.service';
@@ -55,6 +56,7 @@ app.use('/api/stocks', stockRoutes);
 app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/portfolios', portfolioRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {

@@ -83,4 +83,62 @@ export const healthApi = {
   },
 };
 
+export interface DatabaseStats {
+  totalStocks: number;
+  stocksWithoutPrice: number;
+  stocksWithoutFinancials: number;
+  oldestUpdate: string | null;
+  newestUpdate: string | null;
+  oldestSymbol: string | null;
+  newestSymbol: string | null;
+}
+
+export const adminApi = {
+  /**
+   * Veritabanı istatistiklerini getirir
+   */
+  getStats: async (token: string): Promise<DatabaseStats> => {
+    const response = await api.get('/admin/stats', {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.data.data;
+  },
+
+  /**
+   * Tüm hisse verilerini siler (veritabanını sıfırlar)
+   * DİKKAT: Bu işlem geri alınamaz!
+   */
+  resetDatabase: async (token: string): Promise<{ deletedCount: number; previousCount: number }> => {
+    const response = await api.delete('/admin/database/stocks', {
+      headers: { Authorization: `Bearer ${token}` },
+      data: { confirm: 'DELETE_ALL_STOCKS' },
+    });
+    return response.data.data;
+  },
+
+  /**
+   * Belirli bir hisseyi siler
+   */
+  deleteStock: async (token: string, symbol: string): Promise<void> => {
+    await api.delete(`/admin/database/stocks/${symbol}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  },
+
+  /**
+   * Güncelleme zamanlarını sıfırlar (veriyi silmeden yeniden çekilmesini sağlar)
+   */
+  resetTimestamps: async (
+    token: string,
+    category: 'all' | 'realtime' | 'daily' | 'quarterly' = 'all'
+  ): Promise<{ modifiedCount: number }> => {
+    const response = await api.post(
+      '/admin/database/reset-timestamps',
+      { category },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return response.data.data;
+  },
+};
+
 export default api;
