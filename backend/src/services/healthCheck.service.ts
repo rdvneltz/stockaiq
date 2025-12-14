@@ -16,31 +16,76 @@ class HealthCheckService {
 
   /**
    * Tüm veri kaynaklarının sağlık durumunu kontrol eder
+   * NOT: Sequential çalışır (paralel = server crash)
    */
   async checkAllSources(): Promise<SystemHealth> {
-    logger.info('Starting health check for all data sources');
+    logger.info('Starting health check for all data sources (SEQUENTIAL)');
 
     try {
-      // Tüm kaynaklarda paralel health check yap
-      const [yahooHealth, kapHealth, investingHealth, twelveDataHealth, finnhubHealth, fmpHealth, isYatirimHealth] = await Promise.allSettled([
-        this.checkYahooFinance(),
-        this.checkKAP(),
-        this.checkInvesting(),
-        this.checkTwelveData(),
-        this.checkFinnhub(),
-        this.checkFMP(),
-        this.checkIsYatirim(),
-      ]);
+      // SEQUENTIAL health check (paralel = server crash!)
+      const dataSources: DataSourceHealth[] = [];
 
-      const dataSources: DataSourceHealth[] = [
-        this.getHealthResult('Yahoo Finance', yahooHealth),
-        this.getHealthResult('Twelve Data', twelveDataHealth),
-        this.getHealthResult('Finnhub', finnhubHealth),
-        this.getHealthResult('FMP (Financial Modeling Prep)', fmpHealth),
-        this.getHealthResult('KAP (Kamu Aydınlatma Platformu)', kapHealth),
-        this.getHealthResult('İş Yatırım', isYatirimHealth),
-        this.getHealthResult('Investing.com', investingHealth),
-      ];
+      // Yahoo Finance
+      try {
+        const result = await this.checkYahooFinance();
+        dataSources.push(result);
+        await this.waitBetweenChecks(200);
+      } catch (e: any) {
+        dataSources.push({ name: 'Yahoo Finance', status: 'down', lastCheck: new Date(), responseTime: null, errorMessage: e.message });
+      }
+
+      // Twelve Data
+      try {
+        const result = await this.checkTwelveData();
+        dataSources.push(result);
+        await this.waitBetweenChecks(200);
+      } catch (e: any) {
+        dataSources.push({ name: 'Twelve Data', status: 'down', lastCheck: new Date(), responseTime: null, errorMessage: e.message });
+      }
+
+      // Finnhub
+      try {
+        const result = await this.checkFinnhub();
+        dataSources.push(result);
+        await this.waitBetweenChecks(200);
+      } catch (e: any) {
+        dataSources.push({ name: 'Finnhub', status: 'down', lastCheck: new Date(), responseTime: null, errorMessage: e.message });
+      }
+
+      // FMP
+      try {
+        const result = await this.checkFMP();
+        dataSources.push(result);
+        await this.waitBetweenChecks(200);
+      } catch (e: any) {
+        dataSources.push({ name: 'FMP', status: 'down', lastCheck: new Date(), responseTime: null, errorMessage: e.message });
+      }
+
+      // KAP
+      try {
+        const result = await this.checkKAP();
+        dataSources.push(result);
+        await this.waitBetweenChecks(200);
+      } catch (e: any) {
+        dataSources.push({ name: 'KAP', status: 'down', lastCheck: new Date(), responseTime: null, errorMessage: e.message });
+      }
+
+      // İş Yatırım
+      try {
+        const result = await this.checkIsYatirim();
+        dataSources.push(result);
+        await this.waitBetweenChecks(200);
+      } catch (e: any) {
+        dataSources.push({ name: 'İş Yatırım', status: 'down', lastCheck: new Date(), responseTime: null, errorMessage: e.message });
+      }
+
+      // Investing
+      try {
+        const result = await this.checkInvesting();
+        dataSources.push(result);
+      } catch (e: any) {
+        dataSources.push({ name: 'Investing.com', status: 'down', lastCheck: new Date(), responseTime: null, errorMessage: e.message });
+      }
 
       // Genel sistem sağlığını belirle
       const overall = this.calculateOverallHealth(dataSources);
@@ -255,24 +300,10 @@ class HealthCheckService {
   }
 
   /**
-   * Promise.allSettled sonucundan sağlık bilgisi çıkarır
+   * Health check'ler arasında bekleme süresi (rate limit için)
    */
-  private getHealthResult(
-    name: string,
-    result: PromiseSettledResult<DataSourceHealth>
-  ): DataSourceHealth {
-    if (result.status === 'fulfilled') {
-      return result.value;
-    } else {
-      logger.error(`Health check failed for ${name}:`, result.reason);
-      return {
-        name,
-        status: 'down',
-        lastCheck: new Date(),
-        responseTime: null,
-        errorMessage: result.reason?.message || 'Unknown error',
-      };
-    }
+  private async waitBetweenChecks(ms: number): Promise<void> {
+    await new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**
