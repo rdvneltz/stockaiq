@@ -31,11 +31,17 @@ if (process.env.NODE_ENV !== 'production') {
 app.use(cors({
   origin: process.env.NODE_ENV === 'production'
     ? [
+        // Vercel domains
         'https://stockaiq.vercel.app',
         'https://stockaiq-frontend.vercel.app',
         'https://stockaiq-front.vercel.app',
-        /^https:\/\/stockaiq.*\.vercel\.app$/
-      ]
+        /^https:\/\/stockaiq.*\.vercel\.app$/,
+        // Render domains
+        'https://stockaiq-frontend.onrender.com',
+        /^https:\/\/stockaiq.*\.onrender\.com$/,
+        // Custom domain (varsa)
+        process.env.FRONTEND_URL
+      ].filter(Boolean)
     : ['http://localhost:3000', 'http://localhost:5173'],
   credentials: true
 }));
@@ -86,19 +92,19 @@ app.use(notFoundHandler);
 // Error handler (en sonda olmalı)
 app.use(errorHandler);
 
-// Initialize health check for serverless
-if (process.env.NODE_ENV === 'production') {
-  // MongoDB bağlantısını başlat (optional)
+// Render veya diğer container-based hosting için sunucuyu başlat
+const isServerless = process.env.VERCEL === '1' || process.env.AWS_LAMBDA_FUNCTION_NAME;
+
+if (isServerless) {
+  // Vercel/Lambda serverless ortamda periyodik check yapma
   database.connect().catch(err =>
     logger.error('MongoDB connection failed:', err)
   );
-
-  // Serverless ortamda periyodik check yapma, sadece ilk init
   healthCheckService.checkAllSources().catch(err =>
     logger.error('Initial health check failed:', err)
   );
 } else {
-  // Local development için sunucuyu başlat
+  // Render, Railway veya local development için sunucuyu başlat
   app.listen(PORT, async () => {
     logger.info(`🚀 StockAIQ Backend started on port ${PORT}`);
     logger.info(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
