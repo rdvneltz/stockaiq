@@ -195,6 +195,8 @@ router.get('/me', async (req: Request, res: Response) => {
           email: user.email,
           username: user.username,
           favorites: user.favorites,
+          role: user.role,
+          approved: user.approved,
         },
       },
     });
@@ -251,6 +253,8 @@ router.post('/favorites', async (req: Request, res: Response) => {
           email: user.email,
           username: user.username,
           favorites: user.favorites,
+          role: user.role,
+          approved: user.approved,
         },
       },
     });
