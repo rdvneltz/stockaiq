@@ -75,15 +75,28 @@ class DataAggregatorService {
       // 4. Sadece gerekli kategoriler için API çağrısı yap
       logger.info(`Fetching updates for ${symbol}: RT=${needsRealtimeUpdate}, Daily=${needsDailyUpdate}, Quarterly=${needsQuarterlyUpdate}`);
 
-      const [yahooData, twelveData, finnhubData, fmpData, kapData, isYatirimData, investingData] = await Promise.allSettled([
+      // Bellek tasarrufu için sadece temel kaynakları kullan
+      // FMP devre dışı (403 hatası veriyor)
+      const [yahooData, twelveData, investingData] = await Promise.allSettled([
         yahooFinanceService.getStockData(symbol),
         twelveDataService.getStockData(symbol),
-        finnhubService.getStockData(symbol),
-        needsQuarterlyUpdate ? fmpService.getFinancialStatements(symbol) : Promise.resolve({}),
-        needsQuarterlyUpdate ? kapService.getFinancialData(symbol) : Promise.resolve({}),
-        needsQuarterlyUpdate ? isYatirimService.getFinancialStatements(symbol) : Promise.resolve({}),
         investingService.getStockData(symbol),
       ]);
+
+      // Quarterly veriler için ayrı çağrı (sadece gerektiğinde)
+      let kapData: PromiseSettledResult<Partial<StockData>> = { status: 'fulfilled', value: {} };
+      let isYatirimData: PromiseSettledResult<Partial<StockData>> = { status: 'fulfilled', value: {} };
+
+      if (needsQuarterlyUpdate) {
+        [kapData, isYatirimData] = await Promise.allSettled([
+          kapService.getFinancialData(symbol),
+          isYatirimService.getFinancialStatements(symbol),
+        ]);
+      }
+
+      // Kullanılmayan değişkenler için boş değer
+      const finnhubData: PromiseSettledResult<Partial<StockData>> = { status: 'fulfilled', value: {} };
+      const fmpData: PromiseSettledResult<Partial<StockData>> = { status: 'fulfilled', value: {} };
 
       // 5. Veri birleştir
       const aggregatedData = this.mergeData(
@@ -113,13 +126,15 @@ class DataAggregatorService {
         aggregatedData.priceTargets = priceTargets;
       }
 
-      // 10. Birikim/Dağıtım tespiti yap
-      const accumulationSignals = await accumulationDetector.detectAccumulation(aggregatedData);
-      if (accumulationSignals) {
-        aggregatedData.accumulationSignals = accumulationSignals;
-      }
+      // 10. Birikim/Dağıtım tespiti - GEÇİCİ DEVRE DIŞI
+      // Her hisse için 2 ekstra Yahoo API çağrısı yapıyor, bellek taşmasına sebep oluyor
+      // TODO: Historical data cache'den alınacak şekilde optimize et
+      // const accumulationSignals = await accumulationDetector.detectAccumulation(aggregatedData);
+      // if (accumulationSignals) {
+      //   aggregatedData.accumulationSignals = accumulationSignals;
+      // }
 
-      // 9. MongoDB'ye kaydet (hangi kategoriler güncellendi?)
+      // 11. MongoDB'ye kaydet (hangi kategoriler güncellendi?)
       await stockDbService.saveStock(aggregatedData, {
         realtime: needsRealtimeUpdate,
         daily: needsDailyUpdate,
