@@ -221,6 +221,55 @@ class YahooFinanceService {
   }
 
   /**
+   * Sadece fiyat verilerini çeker (hafif endpoint için)
+   * quoteSummary çağrılmaz - çok daha hızlı
+   */
+  async getQuoteOnly(symbol: string): Promise<{
+    currentPrice: number | null;
+    dailyChange: number | null;
+    dailyChangePercent: number | null;
+    dayHigh: number | null;
+    dayLow: number | null;
+    volume: number | null;
+  } | null> {
+    // Servis devre dışıysa boş döndür
+    if (!this.enabled) {
+      return null;
+    }
+
+    // Rate limit kontrolü
+    const canProceed = await this.waitForRateLimit();
+    if (!canProceed) {
+      return null;
+    }
+
+    const yahooSymbol = this.formatSymbol(symbol);
+
+    try {
+      const quote = await yahooFinance.quote(yahooSymbol);
+
+      if (!quote) {
+        return null;
+      }
+
+      // Başarılı - hata sayacını sıfırla
+      this.consecutiveFailures = 0;
+
+      return {
+        currentPrice: quote.regularMarketPrice || null,
+        dailyChange: quote.regularMarketChange || null,
+        dailyChangePercent: quote.regularMarketChangePercent || null,
+        dayHigh: quote.regularMarketDayHigh || null,
+        dayLow: quote.regularMarketDayLow || null,
+        volume: quote.regularMarketVolume || null,
+      };
+    } catch (error: any) {
+      this.handleError(error, symbol);
+      return null;
+    }
+  }
+
+  /**
    * Quote summary verilerini çeker
    */
   private async getQuoteSummary(symbol: string) {

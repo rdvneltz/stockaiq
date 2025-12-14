@@ -43,6 +43,23 @@ export const stockApi = {
   },
 
   /**
+   * Sadece fiyat verilerini çeker (hafif ve hızlı)
+   */
+  getPrices: async (symbols: string[]): Promise<Array<{
+    symbol: string;
+    currentPrice: number | null;
+    dailyChange: number | null;
+    dailyChangePercent: number | null;
+    dayHigh: number | null;
+    dayLow: number | null;
+    volume: number | null;
+    lastUpdated: Date;
+  }>> => {
+    const response = await api.post('/stocks/prices', { symbols });
+    return response.data.data;
+  },
+
+  /**
    * Hisse cache'ini temizler
    */
   clearStockCache: async (symbol: string): Promise<void> => {
