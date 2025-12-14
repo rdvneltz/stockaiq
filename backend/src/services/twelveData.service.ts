@@ -6,6 +6,21 @@ class TwelveDataService {
   private readonly API_KEY = process.env.TWELVE_DATA_API_KEY;
   private readonly BASE_URL = 'https://api.twelvedata.com';
   private readonly enabled = !!this.API_KEY;
+  private lastRequestTime = 0;
+  private readonly MIN_REQUEST_INTERVAL = 1000; // 1 saniye bekle (Twelve Data rate limit)
+
+  /**
+   * Rate limit kontrolü - gerekirse bekle
+   */
+  private async waitForRateLimit(): Promise<void> {
+    const now = Date.now();
+    const timeSinceLastRequest = now - this.lastRequestTime;
+    if (timeSinceLastRequest < this.MIN_REQUEST_INTERVAL) {
+      const waitTime = this.MIN_REQUEST_INTERVAL - timeSinceLastRequest;
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+    this.lastRequestTime = Date.now();
+  }
 
   /**
    * Twelve Data'dan hisse verilerini çeker (BIST desteği var!)
@@ -113,6 +128,9 @@ class TwelveDataService {
       logger.debug('Twelve Data API key not configured');
       return [];
     }
+
+    // Rate limit kontrolü
+    await this.waitForRateLimit();
 
     const tickerSymbol = `${symbol}.IS`;
     logger.info(`Fetching historical data from Twelve Data: ${tickerSymbol} (interval: ${interval})`);

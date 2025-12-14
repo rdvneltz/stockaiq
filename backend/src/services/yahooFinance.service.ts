@@ -290,6 +290,13 @@ class YahooFinanceService {
     period: '1d' | '5d' | '1mo' | '3mo' | '6mo' | '1y' | '2y' | '5y' | '10y' = '3mo',
     interval: '1d' | '1wk' | '1mo' = '1d'
   ): Promise<any[]> {
+    // Rate limit kontrolü
+    const canProceed = await this.waitForRateLimit();
+    if (!canProceed) {
+      logger.warn(`Rate limited, skipping historical data for ${symbol}`);
+      return [];
+    }
+
     const yahooSymbol = this.formatSymbol(symbol);
     logger.info(`Fetching historical data from Yahoo Finance: ${yahooSymbol} (period: ${period}, interval: ${interval})`);
 

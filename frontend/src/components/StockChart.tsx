@@ -1,5 +1,9 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { createChart, IChartApi, ISeriesApi, CandlestickData, LineData } from 'lightweight-charts';
+
+// Client-side cache for historical data (persists during session)
+const historicalDataCache = new Map<string, { data: CandlestickData[]; timestamp: number }>();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 dakika cache
 
 interface StockChartProps {
   symbol: string;
@@ -21,11 +25,13 @@ const StockChart: React.FC<StockChartProps> = ({
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const candlestickSeriesRef = useRef<ISeriesApi<'Candlestick'> | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
   const [showBollinger, setShowBollinger] = useState(true);
   const [showFibonacci, setShowFibonacci] = useState(true);
   const [interval, setInterval] = useState<'1h' | '4h' | '1d' | '1wk' | '1mo'>('1d');
   const [loading, setLoading] = useState(true);
   const [historicalData, setHistoricalData] = useState<CandlestickData[]>([]);
+  const [error, setError] = useState<string | null>(null);
   const bollingerSeriesRef = useRef<{
     upper: ISeriesApi<'Line'> | null;
     middle: ISeriesApi<'Line'> | null;
@@ -50,13 +56,39 @@ const StockChart: React.FC<StockChartProps> = ({
     }
   };
 
-  // Fetch real historical data from backend
-  const fetchHistoricalData = async () => {
+  // Fetch real historical data from backend with caching and abort support
+  const fetchHistoricalData = useCallback(async () => {
+    const cacheKey = `${symbol}-${interval}`;
+
+    // Check cache first
+    const cached = historicalDataCache.get(cacheKey);
+    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+      setHistoricalData(cached.data);
+      setLoading(false);
+      setError(null);
+      return;
+    }
+
+    // Cancel any pending request
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    // Create new abort controller for this request
+    abortControllerRef.current = new AbortController();
+    const signal = abortControllerRef.current.signal;
+
     setLoading(true);
+    setError(null);
+
     try {
       const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5001/api';
       const period = getPeriodForInterval(interval);
-      const response = await fetch(`${API_BASE_URL}/stocks/${symbol}/historical?period=${period}&interval=${interval}`);
+
+      const response = await fetch(
+        `${API_BASE_URL}/stocks/${symbol}/historical?period=${period}&interval=${interval}`,
+        { signal }
+      );
 
       if (!response.ok) {
         throw new Error('Historical data fetch failed');
@@ -65,23 +97,39 @@ const StockChart: React.FC<StockChartProps> = ({
       const result = await response.json();
 
       if (result.success && result.data && result.data.length > 0) {
+        // Store in cache
+        historicalDataCache.set(cacheKey, {
+          data: result.data,
+          timestamp: Date.now()
+        });
         setHistoricalData(result.data);
       } else {
         console.warn('No data returned from API');
         setHistoricalData([]);
       }
-    } catch (error) {
-      console.error('Error fetching historical data:', error);
-      // Fallback to empty data on error
+    } catch (err: any) {
+      // Don't log abort errors - they're intentional
+      if (err.name === 'AbortError') {
+        return;
+      }
+      console.error('Error fetching historical data:', err);
+      setError('Grafik verisi yüklenemedi');
       setHistoricalData([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [symbol, interval]);
 
   useEffect(() => {
     fetchHistoricalData();
-  }, [symbol, interval]);
+
+    // Cleanup: cancel pending request on unmount or dependency change
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, [fetchHistoricalData]);
 
   // Calculate Bollinger Bands
   const calculateBollingerBands = (data: CandlestickData[], period: number = 20, stdDev: number = 2) => {
