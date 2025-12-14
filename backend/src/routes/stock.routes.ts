@@ -124,6 +124,86 @@ router.post('/multiple', async (req: Request, res: Response) => {
 });
 
 /**
+ * POST /api/stocks/prices
+ * Sadece fiyat verilerini hızlıca getirir (hafif endpoint)
+ * Bilanço, analiz vb. ağır veriler çekilmez
+ */
+router.post('/prices', async (req: Request, res: Response) => {
+  const { symbols } = req.body;
+
+  try {
+    if (!Array.isArray(symbols) || symbols.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Geçerli bir hisse listesi giriniz',
+      });
+    }
+
+    if (symbols.length > 100) {
+      return res.status(400).json({
+        success: false,
+        error: 'En fazla 100 hisse sorgulanabilir',
+      });
+    }
+
+    logger.info(`Price-only request for ${symbols.length} stocks`);
+
+    // Sadece fiyat verilerini çek (hafif işlem)
+    const priceData: Array<{
+      symbol: string;
+      currentPrice: number | null;
+      dailyChange: number | null;
+      dailyChangePercent: number | null;
+      dayHigh: number | null;
+      dayLow: number | null;
+      volume: number | null;
+      lastUpdated: Date;
+    }> = [];
+
+    // Hisseleri sırayla çek (paralel = rate limit)
+    for (const symbol of symbols) {
+      try {
+        const quote = await yahooFinanceService.getQuoteOnly(symbol);
+        if (quote) {
+          priceData.push({
+            symbol: symbol.toUpperCase(),
+            currentPrice: quote.currentPrice,
+            dailyChange: quote.dailyChange,
+            dailyChangePercent: quote.dailyChangePercent,
+            dayHigh: quote.dayHigh,
+            dayLow: quote.dayLow,
+            volume: quote.volume,
+            lastUpdated: new Date(),
+          });
+        }
+      } catch (e) {
+        // Sessizce devam et
+        logger.warn(`Price fetch failed for ${symbol}`);
+      }
+
+      // Rate limiting - her hisse arasında 100ms bekle
+      if (symbols.indexOf(symbol) < symbols.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+
+    res.json({
+      success: true,
+      data: priceData,
+      count: priceData.length,
+    });
+
+  } catch (error: any) {
+    logger.error('Price-only API error:', error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Fiyat verileri alınamadı',
+    });
+  }
+});
+
+/**
  * DELETE /api/stocks/:symbol/cache
  * Belirli bir hisse için cache'i temizler
  */

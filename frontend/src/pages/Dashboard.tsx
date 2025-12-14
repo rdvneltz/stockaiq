@@ -9,12 +9,12 @@ import { BIST_INDEXES, BIST30_STOCKS, BIST50_STOCKS, BIST100_STOCKS, ALL_BIST_UN
 
 // Global cache that persists between page navigations
 const globalStockCache = new Map<string, StockData>();
-let lastFetchTime: number = 0;
-const CACHE_DURATION = 90000; // 90 saniye - daha uzun cache süresi (server yükünü azalt)
-const BACKGROUND_REFRESH_INTERVAL = 120000; // 2 dakika - arka planda yenileme (daha seyrek)
+let lastFullLoadTime: number = 0;
+const FULL_DATA_CACHE_DURATION = 5 * 60 * 1000; // 5 dakika - tam veri cache (bilanço, analiz vb.)
+const PRICE_UPDATE_INTERVAL = 5000; // 5 saniye - fiyat güncelleme (hafif endpoint)
 
-// Global mutex to prevent concurrent loadStocks calls
-let isLoadingGlobal = false;
+// Global mutex to prevent concurrent full data loads
+let isLoadingFullData = false;
 
 // Index types
 type BistIndex = 'BIST30' | 'BIST50' | 'BIST100' | 'ALL';
@@ -33,6 +33,8 @@ const Dashboard: React.FC = () => {
   const [filterRating, setFilterRating] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [loadingProgress, setLoadingProgress] = useState({ loaded: 0, total: 0 });
+  const [currentlyLoadingSymbol, setCurrentlyLoadingSymbol] = useState<string | null>(null);
+  const [loadedSymbols, setLoadedSymbols] = useState<Set<string>>(new Set());
 
   // Get favorites from user
   const favorites = user?.favorites || [];
@@ -67,6 +69,7 @@ const Dashboard: React.FC = () => {
     }
 
     setWatchlist(newWatchlist);
+    setLoadedSymbols(new Set()); // Yeni watchlist = yeni yükleme
 
     // Önce global cache'den göster (sayfa geçişlerinde hızlı yükleme)
     const cachedStocks = newWatchlist
@@ -75,6 +78,7 @@ const Dashboard: React.FC = () => {
 
     if (cachedStocks.length > 0) {
       setStocks(cachedStocks);
+      setLoadedSymbols(new Set(cachedStocks.map(s => s.symbol)));
       setLoadingProgress({ loaded: cachedStocks.length, total: newWatchlist.length });
       setLoading(false);
     } else {
@@ -82,6 +86,7 @@ const Dashboard: React.FC = () => {
     }
   }, [viewMode, selectedIndex, favorites]);
 
+  // Tam veri yükleme (tek tek hisse)
   useEffect(() => {
     isMounted.current = true;
     if (watchlist.length > 0) {
@@ -92,153 +97,173 @@ const Dashboard: React.FC = () => {
         .filter((stock): stock is StockData => stock !== undefined);
 
       // Cache yeteri kadar doluysa (%80+) ve tazeyse, hemen göster
-      if (cachedStocks.length >= watchlist.length * 0.8 && now - lastFetchTime < CACHE_DURATION) {
+      if (cachedStocks.length >= watchlist.length * 0.8 && now - lastFullLoadTime < FULL_DATA_CACHE_DURATION) {
         setStocks(cachedStocks);
+        setLoadedSymbols(new Set(cachedStocks.map(s => s.symbol)));
         setLoadingProgress({ loaded: cachedStocks.length, total: watchlist.length });
         setLoading(false);
       } else {
-        loadStocks();
-      }
-
-      // Arka planda periyodik güncelleme - SADECE modal kapalıyken
-      // Modal açıkken background refresh durdurulur (API yükünü azaltmak için)
-      let intervalId: ReturnType<typeof setInterval> | null = null;
-      if (!selectedStock) {
-        intervalId = setInterval(loadStocks, BACKGROUND_REFRESH_INTERVAL);
+        loadStocksOneByOne();
       }
 
       return () => {
         isMounted.current = false;
-        if (intervalId) {
-          clearInterval(intervalId);
-        }
       };
     }
     return () => { isMounted.current = false; };
-  }, [watchlist, selectedStock]);
+  }, [watchlist]);
 
-  const loadStocks = async () => {
+  // Fiyat güncelleme (hızlı, hafif endpoint) - SADECE modal kapalıyken
+  useEffect(() => {
+    if (selectedStock || loadedSymbols.size === 0) return;
+
+    const priceIntervalId = setInterval(() => {
+      updatePricesOnly();
+    }, PRICE_UPDATE_INTERVAL);
+
+    return () => {
+      clearInterval(priceIntervalId);
+    };
+  }, [selectedStock, loadedSymbols.size]);
+
+  /**
+   * Hisseleri TEK TEK yükler - her hissenin tüm verileri yüklendikten sonra diğerine geçer
+   * Bu yaklaşım server'ı yormaz ve kullanıcı verileri sırayla görür
+   */
+  const loadStocksOneByOne = async () => {
     // MUTEX: Eğer zaten yükleme devam ediyorsa yeni request başlatma
-    if (isLoadingGlobal) {
-      console.log('[Dashboard] loadStocks skipped - already loading');
+    if (isLoadingFullData) {
+      console.log('[Dashboard] loadStocksOneByOne skipped - already loading');
       return;
     }
 
-    const now = Date.now();
-    const cacheAge = now - lastFetchTime;
+    // Cache'de olmayan sembolleri bul
+    const symbolsToLoad = watchlist.filter(symbol => !globalStockCache.has(symbol));
 
-    // Cache yeterince taze ve veriler varsa, sadece cache'den göster
-    const cachedStocks = watchlist
-      .map(symbol => globalStockCache.get(symbol))
-      .filter((stock): stock is StockData => stock !== undefined);
+    // Tüm veriler cache'de varsa, sadece göster
+    if (symbolsToLoad.length === 0) {
+      const cachedStocks = watchlist
+        .map(symbol => globalStockCache.get(symbol))
+        .filter((stock): stock is StockData => stock !== undefined);
 
-    // Cache %90+ doluysa ve tazeyse, yeniden çekme
-    if (cacheAge < CACHE_DURATION && cachedStocks.length >= watchlist.length * 0.9) {
       if (isMounted.current) {
         setStocks(cachedStocks);
-        setLoadingProgress({ loaded: cachedStocks.length, total: watchlist.length });
-        setLoading(false);
-      }
-      return;
-    }
-
-    // Sadece cache'de olmayan sembolleri çek
-    const uncachedSymbols = watchlist.filter(symbol => !globalStockCache.has(symbol));
-
-    // Eğer tüm veriler cache'deyse ve biraz eskiyse, arka planda güncelle
-    const symbolsToFetch = uncachedSymbols.length > 0 ? uncachedSymbols :
-      (cacheAge > CACHE_DURATION ? watchlist.slice(0, 20) : []); // Sadece ilk 20'yi güncelle
-
-    // Hiç veri çekmemiz gerekmiyorsa cache'den göster
-    if (symbolsToFetch.length === 0) {
-      if (isMounted.current && cachedStocks.length > 0) {
-        setStocks(cachedStocks);
+        setLoadedSymbols(new Set(watchlist));
+        setLoadingProgress({ loaded: watchlist.length, total: watchlist.length });
         setLoading(false);
       }
       return;
     }
 
     // MUTEX: Yükleme başlıyor
-    isLoadingGlobal = true;
-    console.log(`[Dashboard] Loading ${symbolsToFetch.length} stocks...`);
+    isLoadingFullData = true;
+    setLoading(true);
+    console.log(`[Dashboard] Loading ${symbolsToLoad.length} stocks one by one...`);
 
-    // Eğer hiç veri yoksa loading göster, yoksa arka planda güncelle
-    if (cachedStocks.length === 0) {
-      setLoading(true);
-    }
+    const newLoadedSymbols = new Set(loadedSymbols);
+    let loadedCount = globalStockCache.size;
 
-    try {
-      // Küçük batch'ler: 3'lük gruplar, TAMAMEN SERİ (429 rate limit önleme)
-      const batchSize = 3;
-      const batches: string[][] = [];
-
-      for (let i = 0; i < symbolsToFetch.length; i += batchSize) {
-        batches.push(symbolsToFetch.slice(i, i + batchSize));
+    // Her hisseyi TEK TEK yükle
+    for (let i = 0; i < symbolsToLoad.length; i++) {
+      // Component unmount olduysa dur
+      if (!isMounted.current) {
+        console.log('[Dashboard] Component unmounted, stopping load');
+        break;
       }
 
-      let loadedCount = cachedStocks.length;
+      const symbol = symbolsToLoad[i];
+      setCurrentlyLoadingSymbol(symbol);
 
-      // Batch'leri TAMAMEN SERİ olarak işle (server'ı ezmemek için)
-      for (let i = 0; i < batches.length; i++) {
-        // Component unmount olduysa dur
-        if (!isMounted.current) {
-          console.log('[Dashboard] Component unmounted, stopping load');
-          break;
-        }
+      try {
+        // Tek hisse için TÜM verileri çek (bilanço, analiz, her şey)
+        const stockData = await stockApi.getStock(symbol);
 
-        const batch = batches[i];
+        if (stockData && stockData.symbol) {
+          // Global cache'e kaydet
+          globalStockCache.set(stockData.symbol, stockData);
+          newLoadedSymbols.add(stockData.symbol);
+          loadedCount++;
 
-        try {
-          const newStocks = await stockApi.getMultipleStocks(batch);
-
-          // Global cache'i güncelle
-          newStocks.forEach(stock => {
-            if (stock && stock.symbol) {
-              globalStockCache.set(stock.symbol, stock);
-            }
-          });
-
-          loadedCount += newStocks.length;
-
-          // Progress güncelle ve ara sonuçları göster
+          // State güncelle - kullanıcı hemen görsün
           if (isMounted.current) {
+            setLoadedSymbols(new Set(newLoadedSymbols));
             setLoadingProgress({ loaded: loadedCount, total: watchlist.length });
 
-            // Her batch'ten sonra ara sonuçları göster
+            // Tüm yüklenen hisseleri göster
             const allStocks = watchlist
-              .map(symbol => globalStockCache.get(symbol))
+              .map(s => globalStockCache.get(s))
               .filter((stock): stock is StockData => stock !== undefined);
-
-            const uniqueStocks = Array.from(
-              new Map(allStocks.map(stock => [stock.symbol, stock])).values()
-            );
-            setStocks(uniqueStocks);
+            setStocks(allStocks);
           }
-        } catch (batchError) {
-          console.warn(`[Dashboard] Batch ${i + 1}/${batches.length} failed:`, batchError);
-          // Devam et, diğer batch'leri dene
         }
 
-        // Rate limiting için bekleme (her batch'ten sonra) - server yükünü azalt
-        if (i < batches.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 1500)); // 1.5 saniye bekle
-        }
+        console.log(`[Dashboard] Loaded ${symbol} (${i + 1}/${symbolsToLoad.length})`);
+
+      } catch (error) {
+        console.warn(`[Dashboard] Failed to load ${symbol}:`, error);
+        // Hata olsa bile devam et
       }
 
-      lastFetchTime = Date.now();
+      // Her hisse arasında 500ms bekle (server'ı ezmemek için)
+      if (i < symbolsToLoad.length - 1) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+      }
+    }
 
+    lastFullLoadTime = Date.now();
+
+    // MUTEX: Yükleme bitti
+    isLoadingFullData = false;
+    if (isMounted.current) {
+      setCurrentlyLoadingSymbol(null);
+      setLoading(false);
+    }
+  };
+
+  /**
+   * Sadece fiyat verilerini günceller (hafif endpoint)
+   * Bilanço, analiz vb. ağır veriler güncellenmez
+   */
+  const updatePricesOnly = async () => {
+    // Yüklenmiş hisse yoksa atla
+    const loadedStockSymbols = Array.from(loadedSymbols);
+    if (loadedStockSymbols.length === 0) return;
+
+    try {
+      // Hafif price endpoint'ini kullan
+      const priceData = await stockApi.getPrices(loadedStockSymbols);
+
+      if (priceData && priceData.length > 0 && isMounted.current) {
+        // Cache'deki verilerin sadece fiyat kısmını güncelle
+        priceData.forEach(price => {
+          const cached = globalStockCache.get(price.symbol);
+          if (cached && price.currentPrice !== null) {
+            cached.currentPrice = price.currentPrice;
+            cached.tradingData = {
+              ...cached.tradingData,
+              dailyChange: price.dailyChange,
+              dailyChangePercent: price.dailyChangePercent,
+              volume: price.volume,
+            };
+            cached.priceData = {
+              ...cached.priceData,
+              dayHigh: price.dayHigh,
+              dayLow: price.dayLow,
+            };
+            cached.lastUpdated = new Date();
+            globalStockCache.set(price.symbol, cached);
+          }
+        });
+
+        // UI'ı güncelle
+        const updatedStocks = watchlist
+          .map(symbol => globalStockCache.get(symbol))
+          .filter((stock): stock is StockData => stock !== undefined);
+        setStocks(updatedStocks);
+      }
     } catch (error) {
-      console.warn('[Dashboard] Failed to load stocks:', error);
-      // Hata olsa bile cache'deki verileri göster
-      if (isMounted.current && cachedStocks.length > 0) {
-        setStocks(cachedStocks);
-      }
-    } finally {
-      // MUTEX: Yükleme bitti
-      isLoadingGlobal = false;
-      if (isMounted.current) {
-        setLoading(false);
-      }
+      // Sessizce devam et - fiyat güncellemesi kritik değil
+      console.debug('[Dashboard] Price update failed:', error);
     }
   };
 
@@ -295,7 +320,10 @@ const Dashboard: React.FC = () => {
   };
 
   const handleRefresh = () => {
-    loadStocks();
+    // Cache'i temizle ve yeniden yükle
+    watchlist.forEach(symbol => globalStockCache.delete(symbol));
+    setLoadedSymbols(new Set());
+    loadStocksOneByOne();
   };
 
   // Akıllı analize göre sıralama fonksiyonu
@@ -351,8 +379,11 @@ const Dashboard: React.FC = () => {
           <h1>📊 Piyasa Görünümü</h1>
           <p>
             {filteredAndSortedStocks.length} hisse görüntüleniyor
-            {loading && loadingProgress.total > 0 && (
-              <span className="loading-progress"> • Yükleniyor: {loadingProgress.loaded}/{loadingProgress.total}</span>
+            {loadingProgress.total > 0 && loadingProgress.loaded < loadingProgress.total && (
+              <span className="loading-progress">
+                {' '}• Yükleniyor: {loadingProgress.loaded}/{loadingProgress.total}
+                {currentlyLoadingSymbol && ` (${currentlyLoadingSymbol})`}
+              </span>
             )}
           </p>
         </div>
@@ -430,21 +461,36 @@ const Dashboard: React.FC = () => {
       </div>
 
       {/* Stock Grid */}
-      {loading && stocks.length === 0 ? (
-        <div className="loading">Hisseler yükleniyor...</div>
-      ) : (
-        <div className="stock-grid">
-          {filteredAndSortedStocks.map((stock) => (
-            <StockCard
-              key={stock.symbol}
-              stock={stock}
-              isFavorite={favorites.includes(stock.symbol)}
-              onToggleFavorite={toggleFavorite}
-              onClick={() => setSelectedStock(stock)}
+      <div className="stock-grid">
+        {/* Yüklenmiş hisseler */}
+        {filteredAndSortedStocks.map((stock) => (
+          <StockCard
+            key={stock.symbol}
+            stock={stock}
+            isFavorite={favorites.includes(stock.symbol)}
+            onToggleFavorite={toggleFavorite}
+            onClick={() => setSelectedStock(stock)}
+          />
+        ))}
+
+        {/* Yüklenmemiş hisseler için placeholder kartlar */}
+        {watchlist
+          .filter(symbol => !loadedSymbols.has(symbol))
+          .filter(symbol => {
+            // Search filter uygula
+            if (searchQuery.trim()) {
+              return symbol.toUpperCase().startsWith(searchQuery.trim().toUpperCase());
+            }
+            return true;
+          })
+          .map((symbol) => (
+            <LoadingStockCard
+              key={`loading-${symbol}`}
+              symbol={symbol}
+              isCurrentlyLoading={currentlyLoadingSymbol === symbol}
             />
           ))}
-        </div>
-      )}
+      </div>
 
       {/* Detail Modal */}
       {selectedStock && (
@@ -681,6 +727,123 @@ const Dashboard: React.FC = () => {
 
           .stock-grid {
             grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
+    </div>
+  );
+};
+
+// Loading Stock Card Component (placeholder while loading)
+interface LoadingStockCardProps {
+  symbol: string;
+  isCurrentlyLoading: boolean;
+}
+
+const LoadingStockCard: React.FC<LoadingStockCardProps> = ({ symbol, isCurrentlyLoading }) => {
+  return (
+    <div className="stock-card loading-card">
+      <div className="loading-badge">
+        {isCurrentlyLoading ? 'Yükleniyor...' : 'Bekliyor...'}
+      </div>
+
+      <div className="card-header">
+        <h3>{symbol}</h3>
+        <span className="company-name">Veri çekiliyor...</span>
+      </div>
+
+      <div className="price-section">
+        <div className="price skeleton">--,-- ₺</div>
+        <div className="change skeleton">--%</div>
+      </div>
+
+      {/* Loading Progress Bar */}
+      <div className="loading-bar-container">
+        <div className={`loading-bar ${isCurrentlyLoading ? 'active' : ''}`}></div>
+      </div>
+
+      <div className="card-stats">
+        <div className="stat">
+          <span className="stat-label">PD/DD</span>
+          <span className="stat-value skeleton">--</span>
+        </div>
+        <div className="stat">
+          <span className="stat-label">F/K</span>
+          <span className="stat-value skeleton">--</span>
+        </div>
+        <div className="stat">
+          <span className="stat-label">P.Değeri</span>
+          <span className="stat-value skeleton">--</span>
+        </div>
+        <div className="stat">
+          <span className="stat-label">Hacim</span>
+          <span className="stat-value skeleton">--</span>
+        </div>
+      </div>
+
+      <style>{`
+        .loading-card {
+          opacity: 0.7;
+          cursor: default;
+        }
+
+        .loading-card:hover {
+          transform: none;
+          box-shadow: none;
+        }
+
+        .loading-badge {
+          position: absolute;
+          top: 8px;
+          left: 8px;
+          padding: 4px 10px;
+          border-radius: 12px;
+          font-size: 11px;
+          font-weight: 700;
+          background: rgba(102, 126, 234, 0.3);
+          color: #667eea;
+          z-index: 5;
+        }
+
+        .skeleton {
+          color: rgba(255, 255, 255, 0.3) !important;
+        }
+
+        .loading-bar-container {
+          width: 100%;
+          height: 4px;
+          background: rgba(255, 255, 255, 0.1);
+          border-radius: 2px;
+          margin: 12px 0;
+          overflow: hidden;
+        }
+
+        .loading-bar {
+          width: 30%;
+          height: 100%;
+          background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+          border-radius: 2px;
+          opacity: 0.3;
+        }
+
+        .loading-bar.active {
+          width: 100%;
+          opacity: 1;
+          animation: loading-progress 1.5s ease-in-out infinite;
+        }
+
+        @keyframes loading-progress {
+          0% {
+            width: 0%;
+            margin-left: 0%;
+          }
+          50% {
+            width: 60%;
+            margin-left: 20%;
+          }
+          100% {
+            width: 0%;
+            margin-left: 100%;
           }
         }
       `}</style>
