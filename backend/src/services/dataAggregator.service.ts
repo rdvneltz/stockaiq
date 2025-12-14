@@ -42,6 +42,7 @@ const STOCK_SECTOR_MAP: Record<string, string> = {
 class DataAggregatorService {
   /**
    * Tüm kaynaklardan veri çeker ve birleştirir (MongoDB-first yaklaşımı)
+   * NOT: API çağrıları artık SEQUENTIAL yapılıyor (paralel = server crash)
    */
   async getCompleteStockData(symbol: string): Promise<StockData> {
     const cacheKey = `stock:${symbol.toUpperCase()}`;
@@ -72,42 +73,75 @@ class DataAggregatorService {
         return dbData;
       }
 
-      // 4. Sadece gerekli kategoriler için API çağrısı yap
+      // 4. SEQUENTIAL API çağrıları (paralel = server crash!)
+      // Her API çağrısı arasında rate limit bekleme süresi var
       logger.info(`Fetching updates for ${symbol}: RT=${needsRealtimeUpdate}, Daily=${needsDailyUpdate}, Quarterly=${needsQuarterlyUpdate}`);
 
-      // Bellek tasarrufu için sadece temel kaynakları kullan
-      // FMP devre dışı (403 hatası veriyor)
-      const [yahooData, twelveData, investingData] = await Promise.allSettled([
-        yahooFinanceService.getStockData(symbol),
-        twelveDataService.getStockData(symbol),
-        investingService.getStockData(symbol),
-      ]);
+      // Yahoo Finance - ana veri kaynağı (öncelikli)
+      let yahooData: Partial<StockData> = {};
+      try {
+        yahooData = await yahooFinanceService.getStockData(symbol);
+        await this.waitBetweenRequests(300); // 300ms bekle
+      } catch (e) {
+        logger.warn(`Yahoo Finance failed for ${symbol}`);
+      }
+
+      // Twelve Data - sadece Yahoo başarısızsa veya eksik veri varsa
+      let twelveData: Partial<StockData> = {};
+      if (!yahooData.currentPrice) {
+        try {
+          twelveData = await twelveDataService.getStockData(symbol);
+          await this.waitBetweenRequests(300);
+        } catch (e) {
+          logger.warn(`Twelve Data failed for ${symbol}`);
+        }
+      }
+
+      // Investing - sadece fiyat verisi hala eksikse
+      let investingData: Partial<StockData> = {};
+      if (!yahooData.currentPrice && !twelveData.currentPrice) {
+        try {
+          investingData = await investingService.getStockData(symbol);
+          await this.waitBetweenRequests(300);
+        } catch (e) {
+          logger.warn(`Investing failed for ${symbol}`);
+        }
+      }
 
       // Quarterly veriler için ayrı çağrı (sadece gerektiğinde)
-      let kapData: PromiseSettledResult<Partial<StockData>> = { status: 'fulfilled', value: {} };
-      let isYatirimData: PromiseSettledResult<Partial<StockData>> = { status: 'fulfilled', value: {} };
+      let kapData: Partial<StockData> = {};
+      let isYatirimData: Partial<StockData> = {};
 
       if (needsQuarterlyUpdate) {
-        [kapData, isYatirimData] = await Promise.allSettled([
-          kapService.getFinancialData(symbol),
-          isYatirimService.getFinancialStatements(symbol),
-        ]);
+        try {
+          kapData = await kapService.getFinancialData(symbol);
+          await this.waitBetweenRequests(300);
+        } catch (e) {
+          logger.warn(`KAP failed for ${symbol}`);
+        }
+
+        try {
+          isYatirimData = await isYatirimService.getFinancialStatements(symbol);
+          await this.waitBetweenRequests(300);
+        } catch (e) {
+          logger.warn(`IsYatirim failed for ${symbol}`);
+        }
       }
 
       // Kullanılmayan değişkenler için boş değer
-      const finnhubData: PromiseSettledResult<Partial<StockData>> = { status: 'fulfilled', value: {} };
-      const fmpData: PromiseSettledResult<Partial<StockData>> = { status: 'fulfilled', value: {} };
+      const finnhubData: Partial<StockData> = {};
+      const fmpData: Partial<StockData> = {};
 
       // 5. Veri birleştir
       const aggregatedData = this.mergeData(
         symbol,
-        this.getResultValue(yahooData),
-        this.getResultValue(twelveData),
-        this.getResultValue(finnhubData),
-        this.getResultValue(fmpData),
-        this.getResultValue(kapData),
-        this.getResultValue(isYatirimData),
-        this.getResultValue(investingData),
+        yahooData,
+        twelveData,
+        finnhubData,
+        fmpData,
+        kapData,
+        isYatirimData,
+        investingData,
         dbData // DB'den gelen eski veriyi de birleştir
       );
 
@@ -155,15 +189,10 @@ class DataAggregatorService {
   }
 
   /**
-   * Promise.allSettled sonucunu güvenli şekilde çıkarır
+   * API çağrıları arasında bekleme süresi (rate limit için)
    */
-  private getResultValue(result: PromiseSettledResult<Partial<StockData>>): Partial<StockData> {
-    if (result.status === 'fulfilled') {
-      return result.value;
-    } else {
-      logger.warn('Data source failed:', result.reason);
-      return {};
-    }
+  private async waitBetweenRequests(ms: number): Promise<void> {
+    await new Promise(resolve => setTimeout(resolve, ms));
   }
 
   /**
@@ -666,33 +695,37 @@ class DataAggregatorService {
   }
 
   /**
-   * Birden fazla hissenin verilerini paralel çeker
+   * Birden fazla hissenin verilerini SEQUENTIAL çeker (paralel = server crash)
+   * Her hisse için API çağrıları tamamlandıktan sonra bir sonrakine geçer
    */
   async getMultipleStocks(symbols: string[]): Promise<StockData[]> {
-    logger.info(`Fetching data for ${symbols.length} stocks`);
+    logger.info(`Fetching data for ${symbols.length} stocks (SEQUENTIAL mode)`);
 
-    // Bellek taşmasını önlemek için seri işleme (2'şer hisse)
     const results: StockData[] = [];
-    const batchSize = 2; // Aynı anda sadece 2 hisse
 
-    for (let i = 0; i < symbols.length; i += batchSize) {
-      const batch = symbols.slice(i, i + batchSize);
-      const batchResults = await Promise.allSettled(
-        batch.map(symbol => this.getCompleteStockData(symbol))
-      );
+    // Her hisseyi SIRAYLA işle (paralel değil!)
+    for (let i = 0; i < symbols.length; i++) {
+      const symbol = symbols[i];
 
-      for (const result of batchResults) {
-        if (result.status === 'fulfilled') {
-          results.push(result.value);
+      try {
+        const data = await this.getCompleteStockData(symbol);
+        results.push(data);
+
+        // Her 3 hissede bir progress log
+        if ((i + 1) % 3 === 0) {
+          logger.info(`Progress: ${i + 1}/${symbols.length} stocks loaded`);
         }
+      } catch (error) {
+        logger.warn(`Failed to load ${symbol}, skipping`);
       }
 
-      // Her batch arasında küçük bekleme (GC için)
-      if (i + batchSize < symbols.length) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+      // Her hisse arasında 500ms bekle (rate limit ve memory için)
+      if (i < symbols.length - 1) {
+        await this.waitBetweenRequests(500);
       }
     }
 
+    logger.info(`Completed: ${results.length}/${symbols.length} stocks loaded`);
     return results;
   }
 
