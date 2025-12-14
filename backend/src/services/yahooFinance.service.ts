@@ -6,7 +6,10 @@ class YahooFinanceService {
   private readonly BIST_SUFFIX = '.IS';
   private enabled = true;
   private consecutiveFailures = 0;
-  private readonly MAX_FAILURES = 5; // Yahoo'ya daha fazla şans ver
+  private readonly MAX_FAILURES = 3; // 429 hatası alırsa hızlı devre dışı bırak
+  private lastRequestTime = 0;
+  private readonly MIN_REQUEST_INTERVAL = 500; // Her istek arasında minimum 500ms bekle
+  private rateLimitedUntil = 0; // Rate limit sona erme zamanı
 
   /**
    * BIST hisse sembolünü Yahoo Finance formatına dönüştürür
@@ -18,12 +21,42 @@ class YahooFinanceService {
   }
 
   /**
+   * Rate limit kontrolü - gerekirse bekle
+   */
+  private async waitForRateLimit(): Promise<boolean> {
+    const now = Date.now();
+
+    // Rate limit aktifse, boş döndür
+    if (this.rateLimitedUntil > now) {
+      const waitTime = Math.ceil((this.rateLimitedUntil - now) / 1000);
+      logger.debug(`Yahoo Finance rate limited, ${waitTime}s kaldı`);
+      return false;
+    }
+
+    // Son istekten beri yeterli zaman geçmediyse bekle
+    const timeSinceLastRequest = now - this.lastRequestTime;
+    if (timeSinceLastRequest < this.MIN_REQUEST_INTERVAL) {
+      const waitTime = this.MIN_REQUEST_INTERVAL - timeSinceLastRequest;
+      await new Promise(resolve => setTimeout(resolve, waitTime));
+    }
+
+    this.lastRequestTime = Date.now();
+    return true;
+  }
+
+  /**
    * Yahoo Finance'den hisse verilerini çeker
    */
   async getStockData(symbol: string): Promise<Partial<StockData>> {
     // Servis devre dışıysa boş döndür
     if (!this.enabled) {
       logger.debug(`Yahoo Finance is temporarily disabled, skipping ${symbol}`);
+      return {};
+    }
+
+    // Rate limit kontrolü
+    const canProceed = await this.waitForRateLimit();
+    if (!canProceed) {
       return {};
     }
 
@@ -142,22 +175,35 @@ class YahooFinanceService {
   }
 
   /**
-   * Hata yönetimi
+   * Hata yönetimi - 429 hatası için özel işlem
    */
   private handleError(error: any, symbol: string): void {
+    const errorMessage = error?.message || '';
+    const is429Error = errorMessage.includes('429') || errorMessage.includes('Too Many Requests');
+
     this.consecutiveFailures++;
-    logger.warn(`Yahoo Finance error for ${symbol} (${this.consecutiveFailures}/${this.MAX_FAILURES}):`, error.message);
+    logger.warn(`Yahoo Finance error for ${symbol} (${this.consecutiveFailures}/${this.MAX_FAILURES}):`, errorMessage);
+
+    // 429 hatası için anında rate limit uygula
+    if (is429Error) {
+      // Exponential backoff: 30s, 60s, 120s, 240s...
+      const backoffTime = Math.min(30 * 1000 * Math.pow(2, this.consecutiveFailures - 1), 5 * 60 * 1000);
+      this.rateLimitedUntil = Date.now() + backoffTime;
+      logger.warn(`Yahoo Finance rate limited for ${backoffTime / 1000}s due to 429 error`);
+    }
 
     if (this.consecutiveFailures >= this.MAX_FAILURES) {
       logger.warn('Yahoo Finance temporarily disabled due to consecutive failures');
       this.enabled = false;
 
-      // 3 dakika sonra tekrar etkinleştir (Yahoo genelde hızlı düzelir)
+      // 429 hatası için 5 dakika, diğer hatalar için 2 dakika bekle
+      const cooldownTime = is429Error ? 5 * 60 * 1000 : 2 * 60 * 1000;
       setTimeout(() => {
         this.enabled = true;
         this.consecutiveFailures = 0;
+        this.rateLimitedUntil = 0;
         logger.info('Yahoo Finance re-enabled after cooldown');
-      }, 3 * 60 * 1000);
+      }, cooldownTime);
     }
   }
 

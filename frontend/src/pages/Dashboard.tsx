@@ -148,8 +148,8 @@ const Dashboard: React.FC = () => {
     }
 
     try {
-      // Küçük batch'ler: 4'lük gruplar, 1 seri işleme (bellek taşmasını önler)
-      const batchSize = 4;
+      // Küçük batch'ler: 3'lük gruplar, 1 seri işleme (429 rate limit önleme)
+      const batchSize = 3;
       const parallelBatches = 1;
       const batches: string[][] = [];
 
@@ -193,9 +193,9 @@ const Dashboard: React.FC = () => {
           setStocks(uniqueStocks);
         }
 
-        // Rate limiting için bekleme (her batch'ten sonra)
+        // Rate limiting için bekleme (her batch'ten sonra) - Yahoo 429 önleme
         if (i + parallelBatches < batches.length) {
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise(resolve => setTimeout(resolve, 1000)); // 1 saniye bekle
         }
       }
 

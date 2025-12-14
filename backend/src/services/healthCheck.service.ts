@@ -322,14 +322,15 @@ class HealthCheckService {
 
   /**
    * Otomatik periyodik kontrol başlatır
+   * NOT: İlk kontrol index.ts'de yapılıyor, burada tekrar yapmıyoruz (duplikasyon önleme)
    */
   startPeriodicCheck(): void {
-    logger.info('Starting periodic health check');
+    logger.info('Starting periodic health check (interval: 5 min)');
 
-    // İlk kontrolü hemen yap
-    this.checkAllSources().catch(err => logger.error('Initial health check failed:', err));
+    // İlk kontrolü YAPMA - index.ts'de zaten yapılıyor!
+    // Bu duplikasyon Yahoo Finance rate limit'e çarpmaya sebep oluyordu.
 
-    // Periyodik kontrol başlat
+    // Sadece periyodik kontrol başlat (5 dakika sonra ilk çalışacak)
     setInterval(() => {
       this.checkAllSources().catch(err => logger.error('Periodic health check failed:', err));
     }, this.checkInterval);
