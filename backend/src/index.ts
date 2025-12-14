@@ -27,21 +27,20 @@ if (process.env.NODE_ENV !== 'production') {
   }
 }
 
+// Allowed origins for CORS
+const productionOrigins: (string | RegExp)[] = [
+  // Render domains
+  'https://stockaiq-frontend.onrender.com',
+  /^https:\/\/stockaiq.*\.onrender\.com$/,
+];
+if (process.env.FRONTEND_URL) {
+  productionOrigins.push(process.env.FRONTEND_URL);
+}
+
 // Middleware
 app.use(cors({
   origin: process.env.NODE_ENV === 'production'
-    ? [
-        // Vercel domains
-        'https://stockaiq.vercel.app',
-        'https://stockaiq-frontend.vercel.app',
-        'https://stockaiq-front.vercel.app',
-        /^https:\/\/stockaiq.*\.vercel\.app$/,
-        // Render domains
-        'https://stockaiq-frontend.onrender.com',
-        /^https:\/\/stockaiq.*\.onrender\.com$/,
-        // Custom domain (varsa)
-        process.env.FRONTEND_URL
-      ].filter(Boolean)
+    ? productionOrigins
     : ['http://localhost:3000', 'http://localhost:5173'],
   credentials: true
 }));
