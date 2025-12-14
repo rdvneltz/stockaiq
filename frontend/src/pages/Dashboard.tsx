@@ -11,10 +11,13 @@ import { BIST_INDEXES, BIST30_STOCKS, BIST50_STOCKS, BIST100_STOCKS, ALL_BIST_UN
 const globalStockCache = new Map<string, StockData>();
 let lastFullLoadTime: number = 0;
 const FULL_DATA_CACHE_DURATION = 5 * 60 * 1000; // 5 dakika - tam veri cache (bilanço, analiz vb.)
-const PRICE_UPDATE_INTERVAL = 5000; // 5 saniye - fiyat güncelleme (hafif endpoint)
+const PRICE_UPDATE_INTERVAL = 30000; // 30 saniye - fiyat güncelleme (daha az agresif)
 
 // Global mutex to prevent concurrent full data loads
 let isLoadingFullData = false;
+
+// Flag to track if all stocks have been loaded (for price updates)
+let allStocksLoaded = false;
 
 // Index types
 type BistIndex = 'BIST30' | 'BIST50' | 'BIST100' | 'ALL';
@@ -70,6 +73,7 @@ const Dashboard: React.FC = () => {
 
     setWatchlist(newWatchlist);
     setLoadedSymbols(new Set()); // Yeni watchlist = yeni yükleme
+    allStocksLoaded = false; // Yeni watchlist = fiyat güncellemesi dur
 
     // Önce global cache'den göster (sayfa geçişlerinde hızlı yükleme)
     const cachedStocks = newWatchlist
@@ -113,11 +117,25 @@ const Dashboard: React.FC = () => {
     return () => { isMounted.current = false; };
   }, [watchlist]);
 
-  // Fiyat güncelleme (hızlı, hafif endpoint) - SADECE modal kapalıyken
+  // Fiyat güncelleme (hızlı, hafif endpoint)
+  // SADECE: modal kapalı, tüm hisseler yüklenmiş ve loading devam etmiyorken
   useEffect(() => {
-    if (selectedStock || loadedSymbols.size === 0) return;
+    // Modal açıksa veya hala yükleme devam ediyorsa, fiyat güncelleme yapma
+    if (selectedStock || !allStocksLoaded || isLoadingFullData) {
+      return;
+    }
+
+    // Yüklenmiş hisse yoksa yapma
+    if (loadedSymbols.size === 0) return;
+
+    console.log('[Dashboard] Starting price update interval (30s)');
 
     const priceIntervalId = setInterval(() => {
+      // Yükleme başlamışsa dur
+      if (isLoadingFullData) {
+        console.log('[Dashboard] Price update skipped - loading in progress');
+        return;
+      }
       updatePricesOnly();
     }, PRICE_UPDATE_INTERVAL);
 
@@ -214,6 +232,9 @@ const Dashboard: React.FC = () => {
 
     // MUTEX: Yükleme bitti
     isLoadingFullData = false;
+    allStocksLoaded = true; // Artık fiyat güncellemesi başlayabilir
+    console.log('[Dashboard] All stocks loaded, price updates enabled');
+
     if (isMounted.current) {
       setCurrentlyLoadingSymbol(null);
       setLoading(false);
@@ -222,48 +243,70 @@ const Dashboard: React.FC = () => {
 
   /**
    * Sadece fiyat verilerini günceller (hafif endpoint)
+   * 5'erli gruplar halinde ve sırayla güncelleme yapar (server'ı ezmemek için)
    * Bilanço, analiz vb. ağır veriler güncellenmez
    */
   const updatePricesOnly = async () => {
-    // Yüklenmiş hisse yoksa atla
+    // Yüklenmiş hisse yoksa veya yükleme devam ediyorsa atla
     const loadedStockSymbols = Array.from(loadedSymbols);
-    if (loadedStockSymbols.length === 0) return;
+    if (loadedStockSymbols.length === 0 || isLoadingFullData) return;
 
-    try {
-      // Hafif price endpoint'ini kullan
-      const priceData = await stockApi.getPrices(loadedStockSymbols);
+    const BATCH_SIZE = 5; // Her seferde 5 hisse
+    const BATCH_DELAY = 500; // Gruplar arası 500ms bekleme
 
-      if (priceData && priceData.length > 0 && isMounted.current) {
-        // Cache'deki verilerin sadece fiyat kısmını güncelle
-        priceData.forEach(price => {
-          const cached = globalStockCache.get(price.symbol);
-          if (cached && price.currentPrice !== null) {
-            cached.currentPrice = price.currentPrice;
-            cached.tradingData = {
-              ...cached.tradingData,
-              dailyChange: price.dailyChange,
-              dailyChangePercent: price.dailyChangePercent,
-              volume: price.volume,
-            };
-            cached.priceData = {
-              ...cached.priceData,
-              dayHigh: price.dayHigh,
-              dayLow: price.dayLow,
-            };
-            cached.lastUpdated = new Date();
-            globalStockCache.set(price.symbol, cached);
-          }
-        });
+    console.log(`[Dashboard] Updating prices for ${loadedStockSymbols.length} stocks in batches of ${BATCH_SIZE}`);
 
-        // UI'ı güncelle
-        const updatedStocks = watchlist
-          .map(symbol => globalStockCache.get(symbol))
-          .filter((stock): stock is StockData => stock !== undefined);
-        setStocks(updatedStocks);
+    // Hisseleri 5'erli gruplara böl
+    for (let i = 0; i < loadedStockSymbols.length; i += BATCH_SIZE) {
+      // Yükleme başladıysa dur
+      if (isLoadingFullData || !isMounted.current) {
+        console.log('[Dashboard] Price update interrupted - loading started or unmounted');
+        break;
       }
-    } catch (error) {
-      // Sessizce devam et - fiyat güncellemesi kritik değil
-      console.debug('[Dashboard] Price update failed:', error);
+
+      const batch = loadedStockSymbols.slice(i, i + BATCH_SIZE);
+
+      try {
+        // Bu batch için fiyatları çek
+        const priceData = await stockApi.getPrices(batch);
+
+        if (priceData && priceData.length > 0 && isMounted.current) {
+          // Cache'deki verilerin sadece fiyat kısmını güncelle
+          priceData.forEach(price => {
+            const cached = globalStockCache.get(price.symbol);
+            if (cached && price.currentPrice !== null) {
+              cached.currentPrice = price.currentPrice;
+              cached.tradingData = {
+                ...cached.tradingData,
+                dailyChange: price.dailyChange,
+                dailyChangePercent: price.dailyChangePercent,
+                volume: price.volume,
+              };
+              cached.priceData = {
+                ...cached.priceData,
+                dayHigh: price.dayHigh,
+                dayLow: price.dayLow,
+              };
+              cached.lastUpdated = new Date();
+              globalStockCache.set(price.symbol, cached);
+            }
+          });
+
+          // Her batch sonrası UI'ı güncelle (kullanıcı sırayla görsün)
+          const updatedStocks = watchlist
+            .map(symbol => globalStockCache.get(symbol))
+            .filter((stock): stock is StockData => stock !== undefined);
+          setStocks([...updatedStocks]); // Spread ile yeni array referansı
+        }
+      } catch (error) {
+        // Bu batch başarısız olursa devam et
+        console.debug(`[Dashboard] Price batch ${i / BATCH_SIZE + 1} failed:`, error);
+      }
+
+      // Son batch değilse bekle
+      if (i + BATCH_SIZE < loadedStockSymbols.length) {
+        await new Promise(resolve => setTimeout(resolve, BATCH_DELAY));
+      }
     }
   };
 

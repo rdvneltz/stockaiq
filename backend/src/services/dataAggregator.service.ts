@@ -120,12 +120,14 @@ class DataAggregatorService {
           logger.warn(`KAP failed for ${symbol}`);
         }
 
-        try {
-          isYatirimData = await isYatirimService.getFinancialStatements(symbol);
-          await this.waitBetweenRequests(300);
-        } catch (e) {
-          logger.warn(`IsYatirim failed for ${symbol}`);
-        }
+        // İş Yatırım GEÇİCİ DEVRE DIŞI - 20-30 saniye sürüyor, server timeout yapıyor
+        // TODO: İş Yatırım servisini optimize et veya cache mekanizması ekle
+        // try {
+        //   isYatirimData = await isYatirimService.getFinancialStatements(symbol);
+        //   await this.waitBetweenRequests(300);
+        // } catch (e) {
+        //   logger.warn(`IsYatirim failed for ${symbol}`);
+        // }
       }
 
       // Kullanılmayan değişkenler için boş değer
