@@ -29,11 +29,6 @@ if (process.env.NODE_ENV !== 'production') {
 
 // Allowed origins for CORS
 const productionOrigins: (string | RegExp)[] = [
-  // Vercel domains
-  'https://stockaiq.vercel.app',
-  'https://stockaiq-frontend.vercel.app',
-  'https://stockaiq-front.vercel.app',
-  /^https:\/\/stockaiq.*\.vercel\.app$/,
   // Render domains
   'https://stockaiq-frontend.onrender.com',
   /^https:\/\/stockaiq.*\.onrender\.com$/,
