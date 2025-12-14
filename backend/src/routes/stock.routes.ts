@@ -6,6 +6,47 @@ import logger from '../utils/logger';
 
 const router = Router();
 
+// Historical data cache - reduces API calls significantly
+interface HistoricalCacheEntry {
+  data: any[];
+  timestamp: number;
+}
+const historicalDataCache = new Map<string, HistoricalCacheEntry>();
+
+// Cache durations based on interval
+const getCacheDuration = (interval: string): number => {
+  switch (interval) {
+    case '1h':
+      return 5 * 60 * 1000; // 5 dakika - gün içi veriler için kısa cache
+    case '4h':
+      return 15 * 60 * 1000; // 15 dakika
+    case '1d':
+      return 30 * 60 * 1000; // 30 dakika - günlük veriler
+    case '1wk':
+      return 60 * 60 * 1000; // 1 saat - haftalık veriler
+    case '1mo':
+      return 2 * 60 * 60 * 1000; // 2 saat - aylık veriler
+    default:
+      return 30 * 60 * 1000;
+  }
+};
+
+// Clean old cache entries periodically (every 10 minutes)
+setInterval(() => {
+  const now = Date.now();
+  let cleaned = 0;
+  for (const [key, entry] of historicalDataCache.entries()) {
+    // Remove entries older than 2 hours
+    if (now - entry.timestamp > 2 * 60 * 60 * 1000) {
+      historicalDataCache.delete(key);
+      cleaned++;
+    }
+  }
+  if (cleaned > 0) {
+    logger.debug(`Historical cache cleanup: removed ${cleaned} old entries`);
+  }
+}, 10 * 60 * 1000);
+
 /**
  * GET /api/stocks/:symbol
  * Belirli bir hisse için tüm verileri getirir
@@ -137,14 +178,13 @@ router.delete('/cache/all', (req: Request, res: Response) => {
  *   - period (1d, 5d, 1mo, 3mo, 6mo, 1y, 2y, 5y, 10y) - default: 6mo (ignored for intraday)
  *   - interval (1h, 4h, 1d, 1wk, 1mo) - default: 1d
  * Not: Intraday (1h, 4h) için Twelve Data kullanılır, diğerleri için Yahoo Finance
+ * Cache: Interval'e göre değişken süre (5dk - 2 saat)
  */
 router.get('/:symbol/historical', async (req: Request, res: Response) => {
   const { symbol } = req.params;
   const { period = '6mo', interval = '1d' } = req.query;
 
   try {
-    logger.info(`API request for historical data: ${symbol} (period: ${period}, interval: ${interval})`);
-
     if (!symbol || symbol.length < 2) {
       return res.status(400).json({
         success: false,
@@ -159,6 +199,27 @@ router.get('/:symbol/historical', async (req: Request, res: Response) => {
         error: 'Geçerli bir interval giriniz (1h, 4h, 1d, 1wk, 1mo)',
       });
     }
+
+    // Check cache first
+    const cacheKey = `${symbol.toUpperCase()}-${period}-${interval}`;
+    const cached = historicalDataCache.get(cacheKey);
+    const cacheDuration = getCacheDuration(interval as string);
+
+    if (cached && Date.now() - cached.timestamp < cacheDuration) {
+      logger.debug(`Historical cache HIT for ${cacheKey}`);
+      return res.json({
+        success: true,
+        data: cached.data,
+        count: cached.data.length,
+        period,
+        interval,
+        symbol: symbol.toUpperCase(),
+        source: (interval === '1h' || interval === '4h') ? 'Twelve Data (cached)' : 'Yahoo Finance (cached)',
+        cached: true,
+      });
+    }
+
+    logger.info(`API request for historical data: ${symbol} (period: ${period}, interval: ${interval})`);
 
     let data: any[] = [];
 
@@ -189,6 +250,14 @@ router.get('/:symbol/historical', async (req: Request, res: Response) => {
       );
     }
 
+    // Store in cache
+    if (data.length > 0) {
+      historicalDataCache.set(cacheKey, {
+        data,
+        timestamp: Date.now(),
+      });
+    }
+
     res.json({
       success: true,
       data,
@@ -197,6 +266,7 @@ router.get('/:symbol/historical', async (req: Request, res: Response) => {
       interval,
       symbol: symbol.toUpperCase(),
       source: (interval === '1h' || interval === '4h') ? 'Twelve Data' : 'Yahoo Finance',
+      cached: false,
     });
 
   } catch (error: any) {

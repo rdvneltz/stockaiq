@@ -97,15 +97,22 @@ const Dashboard: React.FC = () => {
         loadStocks();
       }
 
-      // Arka planda periyodik güncelleme
-      const interval = setInterval(loadStocks, BACKGROUND_REFRESH_INTERVAL);
+      // Arka planda periyodik güncelleme - SADECE modal kapalıyken
+      // Modal açıkken background refresh durdurulur (API yükünü azaltmak için)
+      let interval: NodeJS.Timeout | null = null;
+      if (!selectedStock) {
+        interval = setInterval(loadStocks, BACKGROUND_REFRESH_INTERVAL);
+      }
+
       return () => {
         isMounted.current = false;
-        clearInterval(interval);
+        if (interval) {
+          clearInterval(interval);
+        }
       };
     }
     return () => { isMounted.current = false; };
-  }, [watchlist]);
+  }, [watchlist, selectedStock]);
 
   const loadStocks = async () => {
     const now = Date.now();
