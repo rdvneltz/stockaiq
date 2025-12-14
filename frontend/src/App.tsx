@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useLocation, Navigate } from 'react-router-dom';
 import { TrendingUp, Settings as SettingsIcon, LogOut, Shield, PieChart } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
@@ -9,6 +9,8 @@ import Register from './pages/Register';
 import PendingApproval from './pages/PendingApproval';
 import AdminPanel from './pages/AdminPanel';
 import HealthAlert from './components/HealthAlert';
+import ServerStatus from './components/ServerStatus';
+import WakeUpScreen from './components/WakeUpScreen';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
 // Protected Route wrapper
@@ -63,9 +65,16 @@ const App: React.FC = () => {
 const AppContent: React.FC = () => {
   const location = useLocation();
   const isAuthPage = location.pathname === '/login' || location.pathname === '/register';
+  const [isServerWaking, setIsServerWaking] = useState(false);
 
   return (
     <div className="app">
+      {/* Sunucu uyanma ekranı */}
+      <WakeUpScreen isVisible={isServerWaking} />
+
+      {/* Sunucu durumu göstergesi */}
+      <ServerStatus onWaking={setIsServerWaking} />
+
       {!isAuthPage && (
         <>
           <HealthAlert />
