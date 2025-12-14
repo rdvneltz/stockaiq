@@ -391,13 +391,25 @@ router.delete('/admin/reject/:userId', adminMiddleware, async (req: Request, res
   }
 });
 
-// EMERGENCY: Approve user by email (temporary endpoint for fixing superadmin issue)
+// EMERGENCY: Approve user by email (protected endpoint)
+// Secret must be set via EMERGENCY_SECRET environment variable
 router.post('/emergency-approve', async (req: Request, res: Response) => {
   try {
     const { email, secretKey } = req.body;
+    const envSecret = process.env.EMERGENCY_SECRET;
 
-    // Simple security check
-    if (secretKey !== 'stockaiq-emergency-2025') {
+    // Environment variable zorunlu
+    if (!envSecret) {
+      logger.warn('Emergency approve attempt but EMERGENCY_SECRET not set');
+      return res.status(503).json({
+        success: false,
+        message: 'Bu endpoint şu an kullanılamıyor',
+      });
+    }
+
+    // Secret kontrolü (env variable'dan)
+    if (!secretKey || secretKey !== envSecret) {
+      logger.warn(`Invalid emergency approve attempt for: ${email}`);
       return res.status(403).json({
         success: false,
         message: 'Invalid secret key',
@@ -417,7 +429,7 @@ router.post('/emergency-approve', async (req: Request, res: Response) => {
       });
     }
 
-    logger.info(`Emergency approval: ${user.email} approved as admin`);
+    logger.warn(`⚠️ EMERGENCY APPROVAL: ${user.email} approved as admin`);
 
     res.status(200).json({
       success: true,

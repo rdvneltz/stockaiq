@@ -5,6 +5,7 @@ import stockRoutes from './routes/stock.routes';
 import healthRoutes from './routes/health.routes';
 import authRoutes from './routes/auth.routes';
 import portfolioRoutes from './routes/portfolio.routes';
+import adminRoutes from './routes/admin.routes';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { apiLimiter } from './middleware/rateLimiter';
 import healthCheckService from './services/healthCheck.service';
@@ -47,6 +48,17 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Request timeout middleware - 30 saniye (uzun süren istekleri kes)
+app.use((req, res, next) => {
+  req.setTimeout(30000, () => {
+    logger.warn(`Request timeout: ${req.method} ${req.url}`);
+    if (!res.headersSent) {
+      res.status(408).json({ success: false, error: 'Request timeout' });
+    }
+  });
+  next();
+});
+
 // Rate limiting
 app.use('/api', apiLimiter);
 
@@ -55,6 +67,7 @@ app.use('/api/stocks', stockRoutes);
 app.use('/api/health', healthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/portfolios', portfolioRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Root endpoint
 app.get('/', (req, res) => {
@@ -136,12 +149,14 @@ if (isServerless) {
   // Graceful shutdown
   process.on('SIGTERM', async () => {
     logger.info('SIGTERM signal received: closing HTTP server');
+    healthCheckService.stopPeriodicCheck(); // Memory leak önleme
     await database.disconnect();
     process.exit(0);
   });
 
   process.on('SIGINT', async () => {
     logger.info('SIGINT signal received: closing HTTP server');
+    healthCheckService.stopPeriodicCheck(); // Memory leak önleme
     await database.disconnect();
     process.exit(0);
   });

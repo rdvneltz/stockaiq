@@ -148,8 +148,8 @@ const Dashboard: React.FC = () => {
     }
 
     try {
-      // Küçük batch'ler: 4'lük gruplar, 1 seri işleme (bellek taşmasını önler)
-      const batchSize = 4;
+      // Küçük batch'ler: 3'lük gruplar, 1 seri işleme (429 rate limit önleme)
+      const batchSize = 3;
       const parallelBatches = 1;
       const batches: string[][] = [];
 
@@ -193,9 +193,9 @@ const Dashboard: React.FC = () => {
           setStocks(uniqueStocks);
         }
 
-        // Rate limiting için bekleme (her batch'ten sonra)
+        // Rate limiting için bekleme (her batch'ten sonra) - Yahoo 429 önleme
         if (i + parallelBatches < batches.length) {
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise(resolve => setTimeout(resolve, 1000)); // 1 saniye bekle
         }
       }
 
@@ -225,22 +225,45 @@ const Dashboard: React.FC = () => {
 
     setAddingStock(true);
     try {
+      // Önce hisse var mı kontrol et
       await stockApi.getStock(symbolUpper);
+      // Sonra favorilere ekle
       const newFavorites = [...favorites, symbolUpper];
       await updateFavorites(newFavorites);
       setNewSymbol('');
-    } catch (error) {
-      alert('Hisse bulunamadı veya eklenemedi');
+    } catch (error: any) {
+      // Hisse bulunamadı mı yoksa favori güncellenemedi mi ayır
+      if (error.message?.includes('Favori') || error.message?.includes('Oturum')) {
+        alert(error.message);
+      } else {
+        alert('Hisse bulunamadı');
+      }
     } finally {
       setAddingStock(false);
     }
   };
 
+  // Favori toggle için debounce - çift tıklama önleme
+  const [isTogglingFavorite, setIsTogglingFavorite] = useState<string | null>(null);
+
   const toggleFavorite = async (symbol: string) => {
+    // Aynı hisse için işlem devam ediyorsa bekle
+    if (isTogglingFavorite === symbol) return;
+
+    setIsTogglingFavorite(symbol);
     const newFavorites = favorites.includes(symbol)
       ? favorites.filter(s => s !== symbol)
       : [...favorites, symbol];
-    await updateFavorites(newFavorites);
+
+    try {
+      await updateFavorites(newFavorites);
+    } catch (error: any) {
+      console.error('Favori güncelleme hatası:', error);
+      // Kullanıcıya bildir ama alert ile rahatsız etme
+      // İsterseniz toast notification eklenebilir
+    } finally {
+      setIsTogglingFavorite(null);
+    }
   };
 
   const handleRefresh = () => {
