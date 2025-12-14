@@ -99,15 +99,15 @@ const Dashboard: React.FC = () => {
 
       // Arka planda periyodik güncelleme - SADECE modal kapalıyken
       // Modal açıkken background refresh durdurulur (API yükünü azaltmak için)
-      let interval: NodeJS.Timeout | null = null;
+      let intervalId: ReturnType<typeof setInterval> | null = null;
       if (!selectedStock) {
-        interval = setInterval(loadStocks, BACKGROUND_REFRESH_INTERVAL);
+        intervalId = setInterval(loadStocks, BACKGROUND_REFRESH_INTERVAL);
       }
 
       return () => {
         isMounted.current = false;
-        if (interval) {
-          clearInterval(interval);
+        if (intervalId) {
+          clearInterval(intervalId);
         }
       };
     }

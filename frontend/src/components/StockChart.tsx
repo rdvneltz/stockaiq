@@ -330,6 +330,11 @@ const StockChart: React.FC<StockChartProps> = ({
       </div>
       {loading ? (
         <div className="chart-loading">Grafik yükleniyor...</div>
+      ) : error ? (
+        <div className="chart-no-data">
+          <div className="no-data-icon">⚠️</div>
+          <div className="no-data-message">{error}</div>
+        </div>
       ) : historicalData.length === 0 ? (
         <div className="chart-no-data">
           <div className="no-data-icon">📊</div>
