@@ -656,13 +656,29 @@ class DataAggregatorService {
   async getMultipleStocks(symbols: string[]): Promise<StockData[]> {
     logger.info(`Fetching data for ${symbols.length} stocks`);
 
-    const results = await Promise.allSettled(
-      symbols.map(symbol => this.getCompleteStockData(symbol))
-    );
+    // Bellek taşmasını önlemek için seri işleme (2'şer hisse)
+    const results: StockData[] = [];
+    const batchSize = 2; // Aynı anda sadece 2 hisse
 
-    return results
-      .filter((result): result is PromiseFulfilledResult<StockData> => result.status === 'fulfilled')
-      .map(result => result.value);
+    for (let i = 0; i < symbols.length; i += batchSize) {
+      const batch = symbols.slice(i, i + batchSize);
+      const batchResults = await Promise.allSettled(
+        batch.map(symbol => this.getCompleteStockData(symbol))
+      );
+
+      for (const result of batchResults) {
+        if (result.status === 'fulfilled') {
+          results.push(result.value);
+        }
+      }
+
+      // Her batch arasında küçük bekleme (GC için)
+      if (i + batchSize < symbols.length) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+
+    return results;
   }
 
   /**

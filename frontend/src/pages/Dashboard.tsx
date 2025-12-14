@@ -148,9 +148,9 @@ const Dashboard: React.FC = () => {
     }
 
     try {
-      // Daha küçük batch'ler: 8'lik gruplar, 2 paralel batch (timeout riski azaltır)
-      const batchSize = 8;
-      const parallelBatches = 2;
+      // Küçük batch'ler: 4'lük gruplar, 1 seri işleme (bellek taşmasını önler)
+      const batchSize = 4;
+      const parallelBatches = 1;
       const batches: string[][] = [];
 
       for (let i = 0; i < symbolsToFetch.length; i += batchSize) {
@@ -193,9 +193,9 @@ const Dashboard: React.FC = () => {
           setStocks(uniqueStocks);
         }
 
-        // Rate limiting için bekleme (her batch grubundan sonra)
+        // Rate limiting için bekleme (her batch'ten sonra)
         if (i + parallelBatches < batches.length) {
-          await new Promise(resolve => setTimeout(resolve, 200));
+          await new Promise(resolve => setTimeout(resolve, 500));
         }
       }
 
