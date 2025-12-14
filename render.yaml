@@ -24,9 +24,10 @@ services:
         sync: false
     healthCheckPath: /api/health
 
-  # Frontend - Static Site (free by default)
-  - type: static
+  # Frontend - Static Site (no region, no plan for static)
+  - type: web
     name: stockaiq-frontend
+    runtime: static
     buildCommand: cd frontend && npm install && npm run build
     staticPublishPath: frontend/dist
     routes:
