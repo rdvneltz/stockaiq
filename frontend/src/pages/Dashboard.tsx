@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, TrendingUp, TrendingDown, RefreshCw, Star, Filter, Clock, List, LayoutGrid, Settings, GripVertical, Eye, EyeOff, ChevronUp, ChevronDown } from 'lucide-react';
+import { Plus, TrendingUp, TrendingDown, RefreshCw, Star, Filter, Clock, List, LayoutGrid, Settings, Eye, EyeOff, ChevronUp, ChevronDown } from 'lucide-react';
 import { stockApi } from '../services/api';
 import { StockData } from '../types';
 import { formatCurrency, formatPercent, getChangeColor, formatTimeAgo } from '../utils/formatters';
