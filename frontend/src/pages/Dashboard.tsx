@@ -1,11 +1,37 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, TrendingUp, TrendingDown, RefreshCw, Star, Filter, Clock, List, LayoutGrid } from 'lucide-react';
+import { Plus, TrendingUp, TrendingDown, RefreshCw, Star, Filter, Clock, List, LayoutGrid, Settings, GripVertical, Eye, EyeOff, ChevronUp, ChevronDown } from 'lucide-react';
 import { stockApi } from '../services/api';
 import { StockData } from '../types';
 import { formatCurrency, formatPercent, getChangeColor, formatTimeAgo } from '../utils/formatters';
 import StockChart from '../components/StockChart';
 import { useAuth } from '../context/AuthContext';
 import { BIST_INDEXES, BIST30_STOCKS, BIST50_STOCKS, BIST100_STOCKS, ALL_BIST_UNIQUE } from '../constants/bistStocks';
+
+// Liste görünümü için sütun yapılandırması
+interface ColumnConfig {
+  id: string;
+  label: string;
+  visible: boolean;
+  width?: string;
+}
+
+// Varsayılan sütun yapılandırması
+const DEFAULT_COLUMNS: ColumnConfig[] = [
+  { id: 'favorite', label: '⭐', visible: true, width: '40px' },
+  { id: 'symbol', label: 'Sembol', visible: true, width: '80px' },
+  { id: 'name', label: 'Şirket', visible: true },
+  { id: 'price', label: 'Fiyat', visible: true },
+  { id: 'change', label: 'Değişim', visible: true },
+  { id: 'volume', label: 'Hacim', visible: true },
+  { id: 'marketCap', label: 'Piyasa Değeri', visible: false },
+  { id: 'fk', label: 'F/K', visible: true },
+  { id: 'pddd', label: 'PD/DD', visible: true },
+  { id: 'fdFavo', label: 'FD/FAVÖK', visible: false },
+  { id: 'roe', label: 'ROE', visible: false },
+  { id: 'netIncome', label: 'Net Kar', visible: false },
+  { id: 'score', label: 'Skor', visible: true },
+  { id: 'rating', label: 'Öneri', visible: true },
+];
 
 // Global cache that persists between page navigations
 const globalStockCache = new Map<string, StockData>();
@@ -36,6 +62,56 @@ const Dashboard: React.FC = () => {
   const [filterRating, setFilterRating] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [displayMode, setDisplayMode] = useState<'grid' | 'list'>('grid');
+  const [columns, setColumns] = useState<ColumnConfig[]>(() => {
+    // localStorage'dan kayıtlı sütun ayarlarını yükle
+    const saved = localStorage.getItem('stockListColumns');
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch {
+        return DEFAULT_COLUMNS;
+      }
+    }
+    return DEFAULT_COLUMNS;
+  });
+  const [showColumnSettings, setShowColumnSettings] = useState(false);
+
+  // Sütun ayarlarını localStorage'a kaydet
+  useEffect(() => {
+    localStorage.setItem('stockListColumns', JSON.stringify(columns));
+  }, [columns]);
+
+  // Sütun görünürlüğünü değiştir
+  const toggleColumnVisibility = (columnId: string) => {
+    setColumns(prev => prev.map(col =>
+      col.id === columnId ? { ...col, visible: !col.visible } : col
+    ));
+  };
+
+  // Sütunu yukarı taşı
+  const moveColumnUp = (index: number) => {
+    if (index === 0) return;
+    setColumns(prev => {
+      const newCols = [...prev];
+      [newCols[index - 1], newCols[index]] = [newCols[index], newCols[index - 1]];
+      return newCols;
+    });
+  };
+
+  // Sütunu aşağı taşı
+  const moveColumnDown = (index: number) => {
+    if (index === columns.length - 1) return;
+    setColumns(prev => {
+      const newCols = [...prev];
+      [newCols[index], newCols[index + 1]] = [newCols[index + 1], newCols[index]];
+      return newCols;
+    });
+  };
+
+  // Varsayılan ayarlara dön
+  const resetColumns = () => {
+    setColumns(DEFAULT_COLUMNS);
+  };
 
   // Score class helper
   const getScoreClass = (score: number | undefined): string => {
@@ -514,6 +590,55 @@ const Dashboard: React.FC = () => {
               <List size={16} />
             </button>
           </div>
+          {displayMode === 'list' && (
+            <div className="column-settings-wrapper">
+              <button
+                className="column-settings-btn"
+                onClick={() => setShowColumnSettings(!showColumnSettings)}
+                title="Sütun Ayarları"
+              >
+                <Settings size={16} />
+              </button>
+              {showColumnSettings && (
+                <div className="column-settings-dropdown">
+                  <div className="column-settings-header">
+                    <h4>Sütun Ayarları</h4>
+                    <button className="reset-btn" onClick={resetColumns}>Sıfırla</button>
+                  </div>
+                  <div className="column-list">
+                    {columns.map((col, index) => (
+                      <div key={col.id} className="column-item">
+                        <button
+                          className={`visibility-btn ${col.visible ? 'visible' : ''}`}
+                          onClick={() => toggleColumnVisibility(col.id)}
+                          title={col.visible ? 'Gizle' : 'Göster'}
+                        >
+                          {col.visible ? <Eye size={14} /> : <EyeOff size={14} />}
+                        </button>
+                        <span className="column-label">{col.label}</span>
+                        <div className="column-order-btns">
+                          <button
+                            onClick={() => moveColumnUp(index)}
+                            disabled={index === 0}
+                            title="Yukarı Taşı"
+                          >
+                            <ChevronUp size={14} />
+                          </button>
+                          <button
+                            onClick={() => moveColumnDown(index)}
+                            disabled={index === columns.length - 1}
+                            title="Aşağı Taşı"
+                          >
+                            <ChevronDown size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
           <div className="add-stock">
             <input
               type="text"
@@ -569,16 +694,11 @@ const Dashboard: React.FC = () => {
           <table className="stock-table">
             <thead>
               <tr>
-                <th className="col-fav"></th>
-                <th className="col-symbol">Sembol</th>
-                <th className="col-name">Şirket</th>
-                <th className="col-price">Fiyat</th>
-                <th className="col-change">Değişim</th>
-                <th className="col-volume">Hacim</th>
-                <th className="col-fk">F/K</th>
-                <th className="col-pddd">PD/DD</th>
-                <th className="col-score">Skor</th>
-                <th className="col-rating">Öneri</th>
+                {columns.filter(c => c.visible).map(col => (
+                  <th key={col.id} className={`col-${col.id}`} style={col.width ? { width: col.width } : undefined}>
+                    {col.label}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -588,46 +708,94 @@ const Dashboard: React.FC = () => {
                   onClick={() => setSelectedStock(stock)}
                   className="stock-row"
                 >
-                  <td className="col-fav">
-                    <button
-                      className={`fav-btn ${favorites.includes(stock.symbol) ? 'active' : ''}`}
-                      onClick={(e) => { e.stopPropagation(); toggleFavorite(stock.symbol); }}
-                    >
-                      <Star size={14} fill={favorites.includes(stock.symbol) ? '#f59e0b' : 'none'} />
-                    </button>
-                  </td>
-                  <td className="col-symbol">
-                    <span className="symbol-badge">{stock.symbol}</span>
-                  </td>
-                  <td className="col-name">{stock.companyName?.substring(0, 25) || '-'}</td>
-                  <td className="col-price">{formatCurrency(stock.currentPrice)}</td>
-                  <td className="col-change" style={{ color: getChangeColor(stock.tradingData?.dailyChangePercent || 0) }}>
-                    {stock.tradingData?.dailyChangePercent !== null ? (
-                      <>
-                        {stock.tradingData.dailyChangePercent >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
-                        {formatPercent(stock.tradingData.dailyChangePercent)}
-                      </>
-                    ) : '-'}
-                  </td>
-                  <td className="col-volume">
-                    {stock.tradingData?.volume
-                      ? (stock.tradingData.volume >= 1000000
-                          ? `${(stock.tradingData.volume / 1000000).toFixed(1)}M`
-                          : stock.tradingData.volume.toLocaleString('tr-TR'))
-                      : '-'}
-                  </td>
-                  <td className="col-fk">{stock.fundamentals?.fk?.toFixed(2) || '-'}</td>
-                  <td className="col-pddd">{stock.fundamentals?.pdDD?.toFixed(2) || '-'}</td>
-                  <td className="col-score">
-                    <span className={`score-badge score-${getScoreClass(stock.smartAnalysis?.overallScore)}`}>
-                      {stock.smartAnalysis?.overallScore || '-'}
-                    </span>
-                  </td>
-                  <td className="col-rating">
-                    <span className={`rating-badge rating-${stock.smartAnalysis?.rating?.toLowerCase().replace(' ', '-') || 'hold'}`}>
-                      {stock.smartAnalysis?.rating || '-'}
-                    </span>
-                  </td>
+                  {columns.filter(c => c.visible).map(col => {
+                    switch (col.id) {
+                      case 'favorite':
+                        return (
+                          <td key={col.id} className="col-fav">
+                            <button
+                              className={`fav-btn ${favorites.includes(stock.symbol) ? 'active' : ''}`}
+                              onClick={(e) => { e.stopPropagation(); toggleFavorite(stock.symbol); }}
+                            >
+                              <Star size={14} fill={favorites.includes(stock.symbol) ? '#f59e0b' : 'none'} />
+                            </button>
+                          </td>
+                        );
+                      case 'symbol':
+                        return (
+                          <td key={col.id} className="col-symbol">
+                            <span className="symbol-badge">{stock.symbol}</span>
+                          </td>
+                        );
+                      case 'name':
+                        return <td key={col.id} className="col-name">{stock.companyName?.substring(0, 25) || '-'}</td>;
+                      case 'price':
+                        return <td key={col.id} className="col-price">{formatCurrency(stock.currentPrice)}</td>;
+                      case 'change':
+                        return (
+                          <td key={col.id} className="col-change" style={{ color: getChangeColor(stock.tradingData?.dailyChangePercent || 0) }}>
+                            {stock.tradingData?.dailyChangePercent !== null ? (
+                              <>
+                                {stock.tradingData.dailyChangePercent >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                                {formatPercent(stock.tradingData.dailyChangePercent)}
+                              </>
+                            ) : '-'}
+                          </td>
+                        );
+                      case 'volume':
+                        return (
+                          <td key={col.id} className="col-volume">
+                            {stock.tradingData?.volume
+                              ? (stock.tradingData.volume >= 1000000
+                                  ? `${(stock.tradingData.volume / 1000000).toFixed(1)}M`
+                                  : stock.tradingData.volume.toLocaleString('tr-TR'))
+                              : '-'}
+                          </td>
+                        );
+                      case 'marketCap':
+                        return (
+                          <td key={col.id} className="col-marketcap">
+                            {stock.fundamentals?.marketCap
+                              ? `${(stock.fundamentals.marketCap / 1000000000).toFixed(1)}B`
+                              : '-'}
+                          </td>
+                        );
+                      case 'fk':
+                        return <td key={col.id} className="col-fk">{stock.fundamentals?.fk?.toFixed(2) || '-'}</td>;
+                      case 'pddd':
+                        return <td key={col.id} className="col-pddd">{stock.fundamentals?.pdDD?.toFixed(2) || '-'}</td>;
+                      case 'fdFavo':
+                        return <td key={col.id} className="col-fdfavo">{stock.fundamentals?.fdFAVO?.toFixed(2) || '-'}</td>;
+                      case 'roe':
+                        return <td key={col.id} className="col-roe">{stock.fundamentals?.roe ? `${stock.fundamentals.roe.toFixed(1)}%` : '-'}</td>;
+                      case 'netIncome':
+                        return (
+                          <td key={col.id} className="col-netincome">
+                            {stock.financials?.netIncome
+                              ? `${(stock.financials.netIncome / 1000000).toFixed(0)}M`
+                              : '-'}
+                          </td>
+                        );
+                      case 'score':
+                        return (
+                          <td key={col.id} className="col-score">
+                            <span className={`score-badge score-${getScoreClass(stock.smartAnalysis?.overallScore)}`}>
+                              {stock.smartAnalysis?.overallScore || '-'}
+                            </span>
+                          </td>
+                        );
+                      case 'rating':
+                        return (
+                          <td key={col.id} className="col-rating">
+                            <span className={`rating-badge rating-${stock.smartAnalysis?.rating?.toLowerCase().replace(' ', '-') || 'hold'}`}>
+                              {stock.smartAnalysis?.rating || '-'}
+                            </span>
+                          </td>
+                        );
+                      default:
+                        return <td key={col.id}>-</td>;
+                    }
+                  })}
                 </tr>
               ))}
               {/* Yüklenmemiş hisseler için loading rows */}
@@ -641,15 +809,22 @@ const Dashboard: React.FC = () => {
                 })
                 .map((symbol) => (
                   <tr key={`loading-${symbol}`} className="stock-row loading-row">
-                    <td className="col-fav"><Star size={14} /></td>
-                    <td className="col-symbol"><span className="symbol-badge">{symbol}</span></td>
-                    <td className="col-name" colSpan={8}>
-                      {currentlyLoadingSymbol === symbol ? (
-                        <span className="loading-text">Yükleniyor...</span>
-                      ) : (
-                        <span className="loading-text waiting">Bekliyor...</span>
-                      )}
-                    </td>
+                    {columns.filter(c => c.visible).map((col, idx) => {
+                      if (col.id === 'favorite') return <td key={col.id} className="col-fav"><Star size={14} /></td>;
+                      if (col.id === 'symbol') return <td key={col.id} className="col-symbol"><span className="symbol-badge">{symbol}</span></td>;
+                      if (idx === 2) {
+                        return (
+                          <td key={col.id} colSpan={columns.filter(c => c.visible).length - 2}>
+                            {currentlyLoadingSymbol === symbol ? (
+                              <span className="loading-text">Yükleniyor...</span>
+                            ) : (
+                              <span className="loading-text waiting">Bekliyor...</span>
+                            )}
+                          </td>
+                        );
+                      }
+                      return null;
+                    })}
                   </tr>
                 ))}
             </tbody>
@@ -788,6 +963,151 @@ const Dashboard: React.FC = () => {
         .display-toggle button.active {
           background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
           color: #fff;
+        }
+
+        /* Column Settings */
+        .column-settings-wrapper {
+          position: relative;
+        }
+
+        .column-settings-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 8px;
+          background: rgba(255, 255, 255, 0.05);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          border-radius: 8px;
+          color: rgba(255, 255, 255, 0.7);
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .column-settings-btn:hover {
+          background: rgba(255, 255, 255, 0.1);
+          color: #fff;
+        }
+
+        .column-settings-dropdown {
+          position: absolute;
+          top: 100%;
+          right: 0;
+          margin-top: 8px;
+          width: 280px;
+          background: #1a1f3a;
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          border-radius: 12px;
+          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+          z-index: 100;
+          overflow: hidden;
+        }
+
+        .column-settings-header {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 12px 16px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .column-settings-header h4 {
+          margin: 0;
+          font-size: 14px;
+          color: #fff;
+        }
+
+        .column-settings-header .reset-btn {
+          padding: 4px 10px;
+          background: rgba(255, 255, 255, 0.1);
+          border: none;
+          border-radius: 4px;
+          color: rgba(255, 255, 255, 0.7);
+          font-size: 12px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .column-settings-header .reset-btn:hover {
+          background: rgba(255, 255, 255, 0.2);
+          color: #fff;
+        }
+
+        .column-list {
+          max-height: 400px;
+          overflow-y: auto;
+          padding: 8px;
+        }
+
+        .column-item {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px;
+          border-radius: 6px;
+          transition: background 0.2s;
+        }
+
+        .column-item:hover {
+          background: rgba(255, 255, 255, 0.05);
+        }
+
+        .visibility-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 28px;
+          height: 28px;
+          background: rgba(255, 255, 255, 0.05);
+          border: none;
+          border-radius: 4px;
+          color: rgba(255, 255, 255, 0.4);
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .visibility-btn.visible {
+          background: rgba(102, 126, 234, 0.2);
+          color: #667eea;
+        }
+
+        .visibility-btn:hover {
+          background: rgba(255, 255, 255, 0.1);
+        }
+
+        .column-label {
+          flex: 1;
+          font-size: 13px;
+          color: rgba(255, 255, 255, 0.9);
+        }
+
+        .column-order-btns {
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+        }
+
+        .column-order-btns button {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 20px;
+          height: 16px;
+          background: rgba(255, 255, 255, 0.05);
+          border: none;
+          border-radius: 3px;
+          color: rgba(255, 255, 255, 0.5);
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .column-order-btns button:hover:not(:disabled) {
+          background: rgba(255, 255, 255, 0.15);
+          color: #fff;
+        }
+
+        .column-order-btns button:disabled {
+          opacity: 0.3;
+          cursor: not-allowed;
         }
 
         .index-selector {
