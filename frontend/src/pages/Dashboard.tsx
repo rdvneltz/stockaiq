@@ -393,12 +393,17 @@ const Dashboard: React.FC = () => {
   // Filter and sort stocks
   const filteredAndSortedStocks = stocks
     .filter(stock => {
-      // Rating filter - önce rating'e bak
+      // ÖNCE: Watchlist filter - sadece mevcut sekmede olan hisseleri göster
+      if (!watchlist.includes(stock.symbol)) {
+        return false;
+      }
+
+      // Rating filter
       if (filterRating !== 'all' && stock.smartAnalysis.rating !== filterRating) {
         return false;
       }
 
-      // Search filter - rating geçtiyse search'e bak
+      // Search filter
       if (searchQuery.trim()) {
         const query = searchQuery.trim().toUpperCase();
         const matchesSearch = stock.symbol.toUpperCase().startsWith(query) ||
