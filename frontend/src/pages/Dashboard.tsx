@@ -15,23 +15,73 @@ interface ColumnConfig {
   width?: string;
 }
 
-// Varsayılan sütun yapılandırması
-const DEFAULT_COLUMNS: ColumnConfig[] = [
-  { id: 'favorite', label: '⭐', visible: true, width: '40px' },
+// Tüm kullanılabilir sütunlar (StockData'daki tüm alanlar)
+const ALL_AVAILABLE_COLUMNS: ColumnConfig[] = [
+  // Temel bilgiler
+  { id: 'favorite', label: '⭐ Favori', visible: true, width: '40px' },
   { id: 'symbol', label: 'Sembol', visible: true, width: '80px' },
   { id: 'name', label: 'Şirket', visible: true },
+  { id: 'sector', label: 'Sektör', visible: false },
+
+  // Fiyat verileri
   { id: 'price', label: 'Fiyat', visible: true },
-  { id: 'change', label: 'Değişim', visible: true },
+  { id: 'change', label: 'Değişim %', visible: true },
+  { id: 'changeTL', label: 'Değişim ₺', visible: false },
+  { id: 'dayOpen', label: 'Açılış', visible: false },
+  { id: 'dayHigh', label: 'Gün Yüksek', visible: false },
+  { id: 'dayLow', label: 'Gün Düşük', visible: false },
+  { id: 'week52High', label: '52H Yüksek', visible: false },
+  { id: 'week52Low', label: '52H Düşük', visible: false },
+  { id: 'week52Change', label: '52H Değişim', visible: false },
+
+  // İşlem verileri
   { id: 'volume', label: 'Hacim', visible: true },
+  { id: 'volumeTL', label: 'Hacim ₺', visible: false },
+  { id: 'bid', label: 'Alış', visible: false },
+  { id: 'ask', label: 'Satış', visible: false },
+
+  // Temel göstergeler
   { id: 'marketCap', label: 'Piyasa Değeri', visible: false },
   { id: 'fk', label: 'F/K', visible: true },
   { id: 'pddd', label: 'PD/DD', visible: true },
   { id: 'fdFavo', label: 'FD/FAVÖK', visible: false },
-  { id: 'roe', label: 'ROE', visible: false },
+  { id: 'pdEbitda', label: 'PD/EBITDA', visible: false },
+  { id: 'eps', label: 'HBK (EPS)', visible: false },
+
+  // Karlılık
+  { id: 'roe', label: 'ROE %', visible: false },
+  { id: 'roa', label: 'ROA %', visible: false },
+  { id: 'netMargin', label: 'Net Kar Marjı', visible: false },
+  { id: 'grossMargin', label: 'Brüt Kar Marjı', visible: false },
+
+  // Finansallar
+  { id: 'revenue', label: 'Hasılat', visible: false },
   { id: 'netIncome', label: 'Net Kar', visible: false },
+  { id: 'grossProfit', label: 'Brüt Kar', visible: false },
+  { id: 'equity', label: 'Öz Sermaye', visible: false },
+  { id: 'totalAssets', label: 'Toplam Varlık', visible: false },
+  { id: 'totalDebt', label: 'Toplam Borç', visible: false },
+  { id: 'currentAssets', label: 'Dönen Varlık', visible: false },
+  { id: 'currentLiabilities', label: 'KV Borçlar', visible: false },
+
+  // Likidite oranları
+  { id: 'currentRatio', label: 'Cari Oran', visible: false },
+  { id: 'debtToEquity', label: 'Borç/Özsermaye', visible: false },
+
+  // Akıllı Analiz
   { id: 'score', label: 'Skor', visible: true },
   { id: 'rating', label: 'Öneri', visible: true },
+  { id: 'valuationScore', label: 'Değerleme Skoru', visible: false },
+  { id: 'profitabilityScore', label: 'Karlılık Skoru', visible: false },
+  { id: 'liquidityScore', label: 'Likidite Skoru', visible: false },
+  { id: 'leverageScore', label: 'Borçluluk Skoru', visible: false },
 ];
+
+// Varsayılan görünür sütunlar
+const DEFAULT_COLUMNS: ColumnConfig[] = ALL_AVAILABLE_COLUMNS.map(col => ({
+  ...col,
+  visible: ['favorite', 'symbol', 'name', 'price', 'change', 'volume', 'fk', 'pddd', 'score', 'rating'].includes(col.id)
+}));
 
 // Global cache that persists between page navigations
 const globalStockCache = new Map<string, StockData>();
@@ -765,17 +815,131 @@ const Dashboard: React.FC = () => {
                       case 'pddd':
                         return <td key={col.id} className="col-pddd">{stock.fundamentals?.pdDD?.toFixed(2) || '-'}</td>;
                       case 'fdFavo':
-                        return <td key={col.id} className="col-fdfavo">{stock.fundamentals?.fdFAVO?.toFixed(2) || '-'}</td>;
+                        return <td key={col.id}>{stock.fundamentals?.fdFAVO?.toFixed(2) || '-'}</td>;
+                      case 'pdEbitda':
+                        return <td key={col.id}>{stock.fundamentals?.pdEBITDA?.toFixed(2) || '-'}</td>;
+                      case 'eps':
+                        return <td key={col.id}>{stock.fundamentals?.eps?.toFixed(2) || '-'}</td>;
                       case 'roe':
-                        return <td key={col.id} className="col-roe">{stock.fundamentals?.roe ? `${stock.fundamentals.roe.toFixed(1)}%` : '-'}</td>;
+                        return <td key={col.id}>{stock.fundamentals?.roe ? `${stock.fundamentals.roe.toFixed(1)}%` : '-'}</td>;
+                      case 'roa':
+                        return <td key={col.id}>{stock.fundamentals?.roa ? `${stock.fundamentals.roa.toFixed(1)}%` : '-'}</td>;
+                      case 'netMargin':
+                        return <td key={col.id}>{stock.financials?.profitability ? `${stock.financials.profitability.toFixed(1)}%` : '-'}</td>;
+                      case 'grossMargin':
+                        return <td key={col.id}>{stock.financials?.grossProfitMargin ? `${stock.financials.grossProfitMargin.toFixed(1)}%` : '-'}</td>;
+                      case 'sector':
+                        return <td key={col.id}>{stock.sector || '-'}</td>;
+                      case 'changeTL':
+                        return (
+                          <td key={col.id} style={{ color: getChangeColor(stock.tradingData?.dailyChange || 0) }}>
+                            {stock.tradingData?.dailyChange ? formatCurrency(stock.tradingData.dailyChange) : '-'}
+                          </td>
+                        );
+                      case 'dayOpen':
+                        return <td key={col.id}>{formatCurrency(stock.tradingData?.dailyOpen)}</td>;
+                      case 'dayHigh':
+                        return <td key={col.id}>{formatCurrency(stock.priceData?.dayHigh)}</td>;
+                      case 'dayLow':
+                        return <td key={col.id}>{formatCurrency(stock.priceData?.dayLow)}</td>;
+                      case 'week52High':
+                        return <td key={col.id}>{formatCurrency(stock.priceData?.week52High)}</td>;
+                      case 'week52Low':
+                        return <td key={col.id}>{formatCurrency(stock.priceData?.week52Low)}</td>;
+                      case 'week52Change':
+                        return (
+                          <td key={col.id} style={{ color: getChangeColor(stock.priceData?.week52Change || 0) }}>
+                            {stock.priceData?.week52Change ? `${stock.priceData.week52Change.toFixed(1)}%` : '-'}
+                          </td>
+                        );
+                      case 'volumeTL':
+                        return (
+                          <td key={col.id}>
+                            {stock.tradingData?.volumeTL
+                              ? `${(stock.tradingData.volumeTL / 1000000).toFixed(0)}M ₺`
+                              : '-'}
+                          </td>
+                        );
+                      case 'bid':
+                        return <td key={col.id}>{formatCurrency(stock.tradingData?.bid)}</td>;
+                      case 'ask':
+                        return <td key={col.id}>{formatCurrency(stock.tradingData?.ask)}</td>;
                       case 'netIncome':
                         return (
-                          <td key={col.id} className="col-netincome">
+                          <td key={col.id}>
                             {stock.financials?.netIncome
                               ? `${(stock.financials.netIncome / 1000000).toFixed(0)}M`
                               : '-'}
                           </td>
                         );
+                      case 'revenue':
+                        return (
+                          <td key={col.id}>
+                            {stock.financials?.revenue
+                              ? `${(stock.financials.revenue / 1000000).toFixed(0)}M`
+                              : '-'}
+                          </td>
+                        );
+                      case 'grossProfit':
+                        return (
+                          <td key={col.id}>
+                            {stock.financials?.grossProfit
+                              ? `${(stock.financials.grossProfit / 1000000).toFixed(0)}M`
+                              : '-'}
+                          </td>
+                        );
+                      case 'equity':
+                        return (
+                          <td key={col.id}>
+                            {stock.financials?.equity
+                              ? `${(stock.financials.equity / 1000000).toFixed(0)}M`
+                              : '-'}
+                          </td>
+                        );
+                      case 'totalAssets':
+                        return (
+                          <td key={col.id}>
+                            {stock.financials?.totalAssets
+                              ? `${(stock.financials.totalAssets / 1000000).toFixed(0)}M`
+                              : '-'}
+                          </td>
+                        );
+                      case 'totalDebt':
+                        return (
+                          <td key={col.id}>
+                            {stock.financials?.totalDebt
+                              ? `${(stock.financials.totalDebt / 1000000).toFixed(0)}M`
+                              : '-'}
+                          </td>
+                        );
+                      case 'currentAssets':
+                        return (
+                          <td key={col.id}>
+                            {stock.financials?.currentAssets
+                              ? `${(stock.financials.currentAssets / 1000000).toFixed(0)}M`
+                              : '-'}
+                          </td>
+                        );
+                      case 'currentLiabilities':
+                        return (
+                          <td key={col.id}>
+                            {stock.financials?.shortTermLiabilities
+                              ? `${(stock.financials.shortTermLiabilities / 1000000).toFixed(0)}M`
+                              : '-'}
+                          </td>
+                        );
+                      case 'currentRatio':
+                        return <td key={col.id}>{stock.liquidity?.currentRatio?.toFixed(2) || '-'}</td>;
+                      case 'debtToEquity':
+                        return <td key={col.id}>{stock.leverage?.debtToEquity?.toFixed(2) || '-'}</td>;
+                      case 'valuationScore':
+                        return <td key={col.id}>{stock.smartAnalysis?.valuationScore || '-'}</td>;
+                      case 'profitabilityScore':
+                        return <td key={col.id}>{stock.smartAnalysis?.profitabilityScore || '-'}</td>;
+                      case 'liquidityScore':
+                        return <td key={col.id}>{stock.smartAnalysis?.liquidityScore || '-'}</td>;
+                      case 'leverageScore':
+                        return <td key={col.id}>{stock.smartAnalysis?.leverageScore || '-'}</td>;
                       case 'score':
                         return (
                           <td key={col.id} className="col-score">
