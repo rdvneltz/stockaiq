@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, TrendingUp, TrendingDown, RefreshCw, Star, Filter, Clock, List } from 'lucide-react';
+import { Plus, TrendingUp, TrendingDown, RefreshCw, Star, Filter, Clock, List, LayoutGrid } from 'lucide-react';
 import { stockApi } from '../services/api';
 import { StockData } from '../types';
 import { formatCurrency, formatPercent, getChangeColor, formatTimeAgo } from '../utils/formatters';
@@ -35,6 +35,15 @@ const Dashboard: React.FC = () => {
   const [selectedIndex, setSelectedIndex] = useState<BistIndex>('BIST100');
   const [filterRating, setFilterRating] = useState<string>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [displayMode, setDisplayMode] = useState<'grid' | 'list'>('grid');
+
+  // Score class helper
+  const getScoreClass = (score: number | undefined): string => {
+    if (!score) return 'neutral';
+    if (score >= 70) return 'high';
+    if (score >= 50) return 'medium';
+    return 'low';
+  };
   const [loadingProgress, setLoadingProgress] = useState({ loaded: 0, total: 0 });
   const [currentlyLoadingSymbol, setCurrentlyLoadingSymbol] = useState<string | null>(null);
   const [loadedSymbols, setLoadedSymbols] = useState<Set<string>>(new Set());
@@ -484,6 +493,22 @@ const Dashboard: React.FC = () => {
               <option value="Strong Sell">Strong Sell</option>
             </select>
           </div>
+          <div className="display-toggle">
+            <button
+              className={displayMode === 'grid' ? 'active' : ''}
+              onClick={() => setDisplayMode('grid')}
+              title="Kart Görünümü"
+            >
+              <LayoutGrid size={16} />
+            </button>
+            <button
+              className={displayMode === 'list' ? 'active' : ''}
+              onClick={() => setDisplayMode('list')}
+              title="Liste Görünümü"
+            >
+              <List size={16} />
+            </button>
+          </div>
           <div className="add-stock">
             <input
               type="text"
@@ -503,37 +528,129 @@ const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Stock Grid */}
-      <div className="stock-grid">
-        {/* Yüklenmiş hisseler */}
-        {filteredAndSortedStocks.map((stock) => (
-          <StockCard
-            key={stock.symbol}
-            stock={stock}
-            isFavorite={favorites.includes(stock.symbol)}
-            onToggleFavorite={toggleFavorite}
-            onClick={() => setSelectedStock(stock)}
-          />
-        ))}
-
-        {/* Yüklenmemiş hisseler için placeholder kartlar */}
-        {watchlist
-          .filter(symbol => !loadedSymbols.has(symbol))
-          .filter(symbol => {
-            // Search filter uygula
-            if (searchQuery.trim()) {
-              return symbol.toUpperCase().startsWith(searchQuery.trim().toUpperCase());
-            }
-            return true;
-          })
-          .map((symbol) => (
-            <LoadingStockCard
-              key={`loading-${symbol}`}
-              symbol={symbol}
-              isCurrentlyLoading={currentlyLoadingSymbol === symbol}
+      {/* Stock Display - Grid or List */}
+      {displayMode === 'grid' ? (
+        <div className="stock-grid">
+          {/* Yüklenmiş hisseler */}
+          {filteredAndSortedStocks.map((stock) => (
+            <StockCard
+              key={stock.symbol}
+              stock={stock}
+              isFavorite={favorites.includes(stock.symbol)}
+              onToggleFavorite={toggleFavorite}
+              onClick={() => setSelectedStock(stock)}
             />
           ))}
-      </div>
+
+          {/* Yüklenmemiş hisseler için placeholder kartlar */}
+          {watchlist
+            .filter(symbol => !loadedSymbols.has(symbol))
+            .filter(symbol => {
+              if (searchQuery.trim()) {
+                return symbol.toUpperCase().startsWith(searchQuery.trim().toUpperCase());
+              }
+              return true;
+            })
+            .map((symbol) => (
+              <LoadingStockCard
+                key={`loading-${symbol}`}
+                symbol={symbol}
+                isCurrentlyLoading={currentlyLoadingSymbol === symbol}
+              />
+            ))}
+        </div>
+      ) : (
+        <div className="stock-list">
+          <table className="stock-table">
+            <thead>
+              <tr>
+                <th className="col-fav"></th>
+                <th className="col-symbol">Sembol</th>
+                <th className="col-name">Şirket</th>
+                <th className="col-price">Fiyat</th>
+                <th className="col-change">Değişim</th>
+                <th className="col-volume">Hacim</th>
+                <th className="col-fk">F/K</th>
+                <th className="col-pddd">PD/DD</th>
+                <th className="col-score">Skor</th>
+                <th className="col-rating">Öneri</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredAndSortedStocks.map((stock) => (
+                <tr
+                  key={stock.symbol}
+                  onClick={() => setSelectedStock(stock)}
+                  className="stock-row"
+                >
+                  <td className="col-fav">
+                    <button
+                      className={`fav-btn ${favorites.includes(stock.symbol) ? 'active' : ''}`}
+                      onClick={(e) => { e.stopPropagation(); toggleFavorite(stock.symbol); }}
+                    >
+                      <Star size={14} fill={favorites.includes(stock.symbol) ? '#f59e0b' : 'none'} />
+                    </button>
+                  </td>
+                  <td className="col-symbol">
+                    <span className="symbol-badge">{stock.symbol}</span>
+                  </td>
+                  <td className="col-name">{stock.companyName?.substring(0, 25) || '-'}</td>
+                  <td className="col-price">{formatCurrency(stock.currentPrice)}</td>
+                  <td className="col-change" style={{ color: getChangeColor(stock.tradingData?.dailyChangePercent || 0) }}>
+                    {stock.tradingData?.dailyChangePercent !== null ? (
+                      <>
+                        {stock.tradingData.dailyChangePercent >= 0 ? <TrendingUp size={14} /> : <TrendingDown size={14} />}
+                        {formatPercent(stock.tradingData.dailyChangePercent)}
+                      </>
+                    ) : '-'}
+                  </td>
+                  <td className="col-volume">
+                    {stock.tradingData?.volume
+                      ? (stock.tradingData.volume >= 1000000
+                          ? `${(stock.tradingData.volume / 1000000).toFixed(1)}M`
+                          : stock.tradingData.volume.toLocaleString('tr-TR'))
+                      : '-'}
+                  </td>
+                  <td className="col-fk">{stock.fundamentals?.fk?.toFixed(2) || '-'}</td>
+                  <td className="col-pddd">{stock.fundamentals?.pdDD?.toFixed(2) || '-'}</td>
+                  <td className="col-score">
+                    <span className={`score-badge score-${getScoreClass(stock.smartAnalysis?.overallScore)}`}>
+                      {stock.smartAnalysis?.overallScore || '-'}
+                    </span>
+                  </td>
+                  <td className="col-rating">
+                    <span className={`rating-badge rating-${stock.smartAnalysis?.rating?.toLowerCase().replace(' ', '-') || 'hold'}`}>
+                      {stock.smartAnalysis?.rating || '-'}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {/* Yüklenmemiş hisseler için loading rows */}
+              {watchlist
+                .filter(symbol => !loadedSymbols.has(symbol))
+                .filter(symbol => {
+                  if (searchQuery.trim()) {
+                    return symbol.toUpperCase().startsWith(searchQuery.trim().toUpperCase());
+                  }
+                  return true;
+                })
+                .map((symbol) => (
+                  <tr key={`loading-${symbol}`} className="stock-row loading-row">
+                    <td className="col-fav"><Star size={14} /></td>
+                    <td className="col-symbol"><span className="symbol-badge">{symbol}</span></td>
+                    <td className="col-name" colSpan={8}>
+                      {currentlyLoadingSymbol === symbol ? (
+                        <span className="loading-text">Yükleniyor...</span>
+                      ) : (
+                        <span className="loading-text waiting">Bekliyor...</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       {/* Detail Modal */}
       {selectedStock && (
@@ -634,6 +751,37 @@ const Dashboard: React.FC = () => {
 
         .filter-select option {
           background: #1a1f3a;
+          color: #fff;
+        }
+
+        .display-toggle {
+          display: flex;
+          gap: 2px;
+          background: rgba(255, 255, 255, 0.05);
+          padding: 4px;
+          border-radius: 8px;
+        }
+
+        .display-toggle button {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 8px;
+          background: transparent;
+          border: none;
+          color: rgba(255, 255, 255, 0.5);
+          border-radius: 6px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .display-toggle button:hover {
+          color: rgba(255, 255, 255, 0.9);
+          background: rgba(255, 255, 255, 0.05);
+        }
+
+        .display-toggle button.active {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
           color: #fff;
         }
 
@@ -743,6 +891,203 @@ const Dashboard: React.FC = () => {
           display: grid;
           grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
           gap: 16px;
+        }
+
+        /* ========== STOCK LIST (TABLE VIEW) ========== */
+        .stock-list {
+          background: rgba(255, 255, 255, 0.03);
+          border-radius: 12px;
+          overflow: hidden;
+          border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .stock-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 14px;
+        }
+
+        .stock-table thead {
+          background: rgba(255, 255, 255, 0.05);
+          position: sticky;
+          top: 0;
+          z-index: 10;
+        }
+
+        .stock-table th {
+          padding: 14px 12px;
+          text-align: left;
+          font-weight: 600;
+          color: rgba(255, 255, 255, 0.7);
+          font-size: 12px;
+          text-transform: uppercase;
+          letter-spacing: 0.5px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+          white-space: nowrap;
+        }
+
+        .stock-table td {
+          padding: 12px;
+          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+          color: rgba(255, 255, 255, 0.9);
+        }
+
+        .stock-row {
+          cursor: pointer;
+          transition: background 0.2s;
+        }
+
+        .stock-row:hover {
+          background: rgba(255, 255, 255, 0.05);
+        }
+
+        .stock-row.loading-row {
+          opacity: 0.5;
+        }
+
+        .col-fav {
+          width: 40px;
+          text-align: center;
+        }
+
+        .fav-btn {
+          background: none;
+          border: none;
+          cursor: pointer;
+          padding: 4px;
+          color: rgba(255, 255, 255, 0.4);
+          transition: all 0.2s;
+        }
+
+        .fav-btn:hover, .fav-btn.active {
+          color: #f59e0b;
+        }
+
+        .col-symbol {
+          width: 80px;
+        }
+
+        .symbol-badge {
+          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          padding: 4px 10px;
+          border-radius: 6px;
+          font-weight: 600;
+          font-size: 13px;
+        }
+
+        .col-name {
+          min-width: 180px;
+          max-width: 220px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          color: rgba(255, 255, 255, 0.7);
+        }
+
+        .col-price {
+          font-weight: 600;
+          color: #fff;
+        }
+
+        .col-change {
+          display: flex;
+          align-items: center;
+          gap: 4px;
+          font-weight: 500;
+        }
+
+        .col-volume, .col-fk, .col-pddd {
+          color: rgba(255, 255, 255, 0.7);
+        }
+
+        .col-score {
+          text-align: center;
+        }
+
+        .score-badge {
+          display: inline-block;
+          padding: 4px 10px;
+          border-radius: 12px;
+          font-weight: 600;
+          font-size: 12px;
+        }
+
+        .score-badge.score-high {
+          background: rgba(16, 185, 129, 0.2);
+          color: #10b981;
+        }
+
+        .score-badge.score-medium {
+          background: rgba(245, 158, 11, 0.2);
+          color: #f59e0b;
+        }
+
+        .score-badge.score-low {
+          background: rgba(239, 68, 68, 0.2);
+          color: #ef4444;
+        }
+
+        .score-badge.score-neutral {
+          background: rgba(255, 255, 255, 0.1);
+          color: rgba(255, 255, 255, 0.5);
+        }
+
+        .col-rating {
+          text-align: center;
+        }
+
+        .rating-badge {
+          display: inline-block;
+          padding: 4px 10px;
+          border-radius: 12px;
+          font-weight: 600;
+          font-size: 11px;
+          text-transform: uppercase;
+        }
+
+        .rating-badge.rating-strong-buy {
+          background: rgba(16, 185, 129, 0.2);
+          color: #10b981;
+        }
+
+        .rating-badge.rating-buy {
+          background: rgba(16, 185, 129, 0.15);
+          color: #34d399;
+        }
+
+        .rating-badge.rating-hold {
+          background: rgba(245, 158, 11, 0.2);
+          color: #f59e0b;
+        }
+
+        .rating-badge.rating-sell {
+          background: rgba(239, 68, 68, 0.15);
+          color: #f87171;
+        }
+
+        .rating-badge.rating-strong-sell {
+          background: rgba(239, 68, 68, 0.2);
+          color: #ef4444;
+        }
+
+        .loading-text {
+          color: #667eea;
+          font-style: italic;
+        }
+
+        .loading-text.waiting {
+          color: rgba(255, 255, 255, 0.4);
+        }
+
+        /* Responsive table */
+        @media (max-width: 1024px) {
+          .stock-list {
+            overflow-x: auto;
+          }
+
+          .stock-table {
+            min-width: 900px;
+          }
         }
 
         .spinning {
