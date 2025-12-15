@@ -39,6 +39,48 @@ const STOCK_SECTOR_MAP: Record<string, string> = {
   'ARCLK': 'Teknoloji', 'VESTL': 'Teknoloji', 'VESBE': 'Teknoloji',
 };
 
+// Maksimum mantıklı değerler (Türkiye'nin en büyük şirketleri bile bu değerlere ulaşamaz)
+const MAX_FINANCIAL_VALUE = 10_000_000_000_000; // 10 trilyon TL
+const MAX_RATIO = 10000; // %10000 (100x)
+const MIN_RATIO = -10000; // %-10000
+
+/**
+ * Finansal değerin mantıklı olup olmadığını kontrol eder
+ * Absürt büyük/küçük değerleri null yapar
+ */
+function validateFinancialValue(value: number | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  if (!isFinite(value)) return null;
+  if (Math.abs(value) > MAX_FINANCIAL_VALUE) {
+    return null; // Absürt büyük değer
+  }
+  return value;
+}
+
+/**
+ * Oran değerinin mantıklı olup olmadığını kontrol eder
+ */
+function validateRatio(value: number | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  if (!isFinite(value)) return null;
+  if (value > MAX_RATIO || value < MIN_RATIO) {
+    return null; // Absürt oran
+  }
+  return value;
+}
+
+/**
+ * Yüzde değerinin mantıklı olup olmadığını kontrol eder (max %1000)
+ */
+function validatePercent(value: number | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  if (!isFinite(value)) return null;
+  if (value > 1000 || value < -1000) {
+    return null; // Brüt kar marjı %200 olamaz mesela
+  }
+  return value;
+}
+
 class DataAggregatorService {
   /**
    * Tüm kaynaklardan veri çeker ve birleştirir (MongoDB-first yaklaşımı)
@@ -120,14 +162,13 @@ class DataAggregatorService {
           logger.warn(`KAP failed for ${symbol}`);
         }
 
-        // İş Yatırım GEÇİCİ DEVRE DIŞI - 20-30 saniye sürüyor, server timeout yapıyor
-        // TODO: İş Yatırım servisini optimize et veya cache mekanizması ekle
-        // try {
-        //   isYatirimData = await isYatirimService.getFinancialStatements(symbol);
-        //   await this.waitBetweenRequests(300);
-        // } catch (e) {
-        //   logger.warn(`IsYatirim failed for ${symbol}`);
-        // }
+        // İş Yatırım - OPTİMİZE EDİLDİ: 5s timeout + 24 saat cache
+        try {
+          isYatirimData = await isYatirimService.getFinancialStatements(symbol);
+          await this.waitBetweenRequests(200); // Daha kısa bekleme (cache olduğu için)
+        } catch (e) {
+          logger.warn(`IsYatirim failed for ${symbol}`);
+        }
       }
 
       // Kullanılmayan değişkenler için boş değer
@@ -146,6 +187,9 @@ class DataAggregatorService {
         investingData,
         dbData // DB'den gelen eski veriyi de birleştir
       );
+
+      // 5.5. VERİ VALİDASYONU - Absürt değerleri temizle
+      this.validateAndSanitizeData(aggregatedData);
 
       // 6. Ek hesaplamalar yap
       this.enrichData(aggregatedData);
@@ -195,6 +239,69 @@ class DataAggregatorService {
    */
   private async waitBetweenRequests(ms: number): Promise<void> {
     await new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+  /**
+   * Veri validasyonu - absürt değerleri null yapar
+   * Yahoo Finance bazen hatalı veriler döndürüyor, bu fonksiyon onları temizler
+   */
+  private validateAndSanitizeData(data: StockData): void {
+    // Finansal değerleri valide et
+    if (data.financials) {
+      data.financials.revenue = validateFinancialValue(data.financials.revenue);
+      data.financials.grossProfit = validateFinancialValue(data.financials.grossProfit);
+      data.financials.netIncome = validateFinancialValue(data.financials.netIncome);
+      data.financials.equity = validateFinancialValue(data.financials.equity);
+      data.financials.currentAssets = validateFinancialValue(data.financials.currentAssets);
+      data.financials.fixedAssets = validateFinancialValue(data.financials.fixedAssets);
+      data.financials.totalAssets = validateFinancialValue(data.financials.totalAssets);
+      data.financials.shortTermLiabilities = validateFinancialValue(data.financials.shortTermLiabilities);
+      data.financials.longTermLiabilities = validateFinancialValue(data.financials.longTermLiabilities);
+      data.financials.shortTermBankLoans = validateFinancialValue(data.financials.shortTermBankLoans);
+      data.financials.longTermBankLoans = validateFinancialValue(data.financials.longTermBankLoans);
+      data.financials.tradeReceivables = validateFinancialValue(data.financials.tradeReceivables);
+      data.financials.financialInvestments = validateFinancialValue(data.financials.financialInvestments);
+      data.financials.totalDebt = validateFinancialValue(data.financials.totalDebt);
+      data.financials.netDebt = validateFinancialValue(data.financials.netDebt);
+      data.financials.workingCapital = validateFinancialValue(data.financials.workingCapital);
+
+      // Yüzde değerleri valide et
+      data.financials.profitability = validatePercent(data.financials.profitability);
+      data.financials.grossProfitMargin = validatePercent(data.financials.grossProfitMargin);
+    }
+
+    // Temel göstergeleri valide et
+    if (data.fundamentals) {
+      data.fundamentals.marketCap = validateFinancialValue(data.fundamentals.marketCap);
+      data.fundamentals.paidCapital = validateFinancialValue(data.fundamentals.paidCapital);
+      data.fundamentals.shares = validateFinancialValue(data.fundamentals.shares);
+
+      // Oranları valide et
+      data.fundamentals.pdDD = validateRatio(data.fundamentals.pdDD);
+      data.fundamentals.fk = validateRatio(data.fundamentals.fk);
+      data.fundamentals.fdFAVO = validateRatio(data.fundamentals.fdFAVO);
+      data.fundamentals.pdEBITDA = validateRatio(data.fundamentals.pdEBITDA);
+      data.fundamentals.eps = validateRatio(data.fundamentals.eps);
+      data.fundamentals.roe = validatePercent(data.fundamentals.roe);
+      data.fundamentals.roa = validatePercent(data.fundamentals.roa);
+    }
+
+    // Likidite oranlarını valide et
+    if (data.liquidity) {
+      data.liquidity.currentRatio = validateRatio(data.liquidity.currentRatio);
+      data.liquidity.acidTestRatio = validateRatio(data.liquidity.acidTestRatio);
+      data.liquidity.cashRatio = validateRatio(data.liquidity.cashRatio);
+    }
+
+    // Kaldıraç oranlarını valide et
+    if (data.leverage) {
+      data.leverage.debtToEquity = validateRatio(data.leverage.debtToEquity);
+      data.leverage.debtToAssets = validateRatio(data.leverage.debtToAssets);
+      data.leverage.shortTermDebtRatio = validatePercent(data.leverage.shortTermDebtRatio);
+      data.leverage.longTermDebtRatio = validatePercent(data.leverage.longTermDebtRatio);
+    }
+
+    logger.debug(`Data validation completed for ${data.symbol}`);
   }
 
   /**

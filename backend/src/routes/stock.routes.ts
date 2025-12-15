@@ -252,6 +252,77 @@ router.delete('/cache/all', (req: Request, res: Response) => {
 });
 
 /**
+ * DELETE /api/stocks/:symbol/purge
+ * Belirli bir hissenin hem cache hem de MongoDB verisini tamamen siler
+ * Bozuk veri temizlemek için kullanılır
+ */
+router.delete('/:symbol/purge', async (req: Request, res: Response) => {
+  const { symbol } = req.params;
+
+  try {
+    // 1. In-memory cache temizle
+    dataAggregator.clearCache(symbol);
+
+    // 2. MongoDB verisini sil
+    const stockDbService = require('../services/stockDb.service').default;
+    const deleted = await stockDbService.deleteStock(symbol);
+
+    res.json({
+      success: true,
+      message: `${symbol} için tüm veriler temizlendi`,
+      details: {
+        cacheCleared: true,
+        mongoDeleted: deleted,
+      },
+    });
+
+    logger.info(`Stock ${symbol} purged: cache cleared, MongoDB deleted=${deleted}`);
+
+  } catch (error: any) {
+    logger.error(`Purge error for ${symbol}:`, error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Veri temizlenemedi',
+    });
+  }
+});
+
+/**
+ * DELETE /api/stocks/purge/all
+ * TÜM hisselerin cache ve MongoDB verisini siler (DİKKATLİ!)
+ */
+router.delete('/purge/all', async (req: Request, res: Response) => {
+  try {
+    // 1. In-memory cache temizle
+    dataAggregator.clearCache();
+
+    // 2. Tüm MongoDB verisini sil
+    const stockDbService = require('../services/stockDb.service').default;
+    const deletedCount = await stockDbService.deleteAllStocks();
+
+    res.json({
+      success: true,
+      message: 'Tüm hisse verileri temizlendi',
+      details: {
+        cacheCleared: true,
+        mongoDeletedCount: deletedCount,
+      },
+    });
+
+    logger.info(`All stocks purged: cache cleared, MongoDB deleted=${deletedCount} records`);
+
+  } catch (error: any) {
+    logger.error('Purge all error:', error);
+
+    res.status(500).json({
+      success: false,
+      error: error.message || 'Veriler temizlenemedi',
+    });
+  }
+});
+
+/**
  * GET /api/stocks/:symbol/historical
  * Belirli bir hisse için gerçek historical price data (candlestick) getirir
  * Query params:

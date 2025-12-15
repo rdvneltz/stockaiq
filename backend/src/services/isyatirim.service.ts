@@ -3,9 +3,14 @@ import * as cheerio from 'cheerio';
 import logger from '../utils/logger';
 import { StockData } from '../types';
 
+// İş Yatırım cache - 24 saat geçerli
+const isYatirimCache = new Map<string, { data: Partial<StockData>; timestamp: number }>();
+const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 saat
+
 /**
  * İş Yatırım web sitesinden finansal veri çeken servis
  * Not: Bu servis İş Yatırım'ın dahili API endpoint'lerini kullanır
+ * OPTİMİZASYON: 5 saniye timeout + 24 saat cache
  */
 class IsYatirimService {
   private readonly BASE_URL = 'https://www.isyatirim.com.tr';
@@ -16,40 +21,85 @@ class IsYatirimService {
   // Company fundamental data endpoint
   private readonly COMPANY_URL = 'https://www.isyatirim.com.tr/tr-tr/analiz/hisse/Sayfalar/sirket-karti.aspx';
 
+  // Servis durumu
+  private enabled = true;
+  private consecutiveFailures = 0;
+  private readonly MAX_FAILURES = 5; // 5 hata sonrası geçici devre dışı
+
   /**
-   * İş Yatırım'dan mali tablo verilerini çeker
+   * İş Yatırım'dan mali tablo verilerini çeker (CACHE + TIMEOUT ile)
    */
   async getFinancialStatements(symbol: string): Promise<Partial<StockData>> {
-    logger.info(`Fetching financial statements from İş Yatırım: ${symbol}`);
+    const upperSymbol = symbol.toUpperCase();
+
+    // Servis devre dışıysa boş döndür
+    if (!this.enabled) {
+      logger.debug(`İş Yatırım disabled, skipping ${upperSymbol}`);
+      return this.getEmptyFinancialData();
+    }
+
+    // Önce cache'e bak
+    const cached = isYatirimCache.get(upperSymbol);
+    if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+      logger.debug(`İş Yatırım cache HIT for ${upperSymbol}`);
+      return cached.data;
+    }
+
+    logger.info(`Fetching financial statements from İş Yatırım: ${upperSymbol}`);
 
     try {
       // İş Yatırım'ın MaliTablo endpoint'inden veri çek
-      const financialData = await this.fetchMaliTablo(symbol);
+      const financialData = await this.fetchMaliTablo(upperSymbol);
 
       if (!financialData) {
-        logger.warn(`No financial data from İş Yatırım for ${symbol}`);
+        this.consecutiveFailures++;
+        this.checkDisable();
+        logger.warn(`No financial data from İş Yatırım for ${upperSymbol}`);
         return this.getEmptyFinancialData();
       }
 
-      logger.info(`İş Yatırım financial data fetched successfully: ${symbol}`);
+      // Başarılı - cache'e kaydet
+      isYatirimCache.set(upperSymbol, { data: financialData, timestamp: Date.now() });
+      this.consecutiveFailures = 0;
+
+      logger.info(`İş Yatırım financial data fetched and cached: ${upperSymbol}`);
       return financialData;
 
     } catch (error: any) {
-      logger.error(`İş Yatırım fetch error for ${symbol}:`, error.message);
+      this.consecutiveFailures++;
+      this.checkDisable();
+      logger.error(`İş Yatırım fetch error for ${upperSymbol}:`, error.message);
       return this.getEmptyFinancialData();
     }
   }
 
   /**
-   * MaliTablo endpoint'inden veri çeker
+   * Ardışık hata kontrolü - çok hata olursa geçici devre dışı bırak
+   */
+  private checkDisable(): void {
+    if (this.consecutiveFailures >= this.MAX_FAILURES) {
+      this.enabled = false;
+      logger.warn(`İş Yatırım temporarily disabled after ${this.consecutiveFailures} failures`);
+
+      // 10 dakika sonra tekrar dene
+      setTimeout(() => {
+        this.enabled = true;
+        this.consecutiveFailures = 0;
+        logger.info('İş Yatırım re-enabled after cooldown');
+      }, 10 * 60 * 1000);
+    }
+  }
+
+  /**
+   * MaliTablo endpoint'inden veri çeker (5 SANİYE TIMEOUT)
    */
   private async fetchMaliTablo(symbol: string): Promise<Partial<StockData> | null> {
     try {
       // Şirket kartı sayfasından mali tablo verilerini çek
-      const url = `${this.COMPANY_URL}?hisse=${symbol.toUpperCase()}`;
+      const url = `${this.COMPANY_URL}?hisse=${symbol}`;
 
       const response = await axios.get(url, {
-        timeout: 10000,
+        timeout: 5000, // 5 SANİYE TIMEOUT (eskiden 10 idi)
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -64,7 +114,12 @@ class IsYatirimService {
       return this.parseFinancialData($, symbol);
 
     } catch (error: any) {
-      logger.error(`İş Yatırım MaliTablo fetch error: ${error.message}`);
+      // Timeout veya network hatası
+      if (error.code === 'ECONNABORTED' || error.message?.includes('timeout')) {
+        logger.debug(`İş Yatırım timeout for ${symbol} (5s limit)`);
+      } else {
+        logger.error(`İş Yatırım MaliTablo fetch error: ${error.message}`);
+      }
       return null;
     }
   }

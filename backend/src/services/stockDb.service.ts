@@ -282,6 +282,47 @@ class StockDbService {
       lastUpdated: stock.updatedAt,
     };
   }
+
+  /**
+   * Belirli bir hissenin MongoDB verisini siler
+   * Bozuk veri temizlemek için kullanılır
+   */
+  async deleteStock(symbol: string): Promise<boolean> {
+    if (!database.isConnected()) {
+      return false;
+    }
+
+    try {
+      const result = await StockModel.deleteOne({ symbol: symbol.toUpperCase() });
+      if (result.deletedCount > 0) {
+        logger.info(`Stock ${symbol} deleted from MongoDB`);
+        return true;
+      }
+      logger.warn(`Stock ${symbol} not found in MongoDB`);
+      return false;
+    } catch (error: any) {
+      logger.error(`DB delete error for ${symbol}:`, error.message);
+      return false;
+    }
+  }
+
+  /**
+   * Tüm hisse verilerini siler (DİKKATLİ KULLAN!)
+   */
+  async deleteAllStocks(): Promise<number> {
+    if (!database.isConnected()) {
+      return 0;
+    }
+
+    try {
+      const result = await StockModel.deleteMany({});
+      logger.info(`All stocks deleted from MongoDB: ${result.deletedCount} records`);
+      return result.deletedCount;
+    } catch (error: any) {
+      logger.error('DB delete all error:', error.message);
+      return 0;
+    }
+  }
 }
 
 export default new StockDbService();
